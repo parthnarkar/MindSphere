@@ -5,10 +5,30 @@ from flask_cors import CORS
 import os
 import time
 
+# Prefer eventlet (or gevent) for real WebSocket support. If eventlet is available
+# we'll monkey-patch the stdlib so the server can handle sockets correctly.
+async_mode = 'threading'
+try:
+    import eventlet  # type: ignore
+    eventlet.monkey_patch()
+    async_mode = 'eventlet'
+    print('Using eventlet for async_mode (better WebSocket support)')
+except Exception:
+    # eventlet not installed; fall back to threading. Threading works but the
+    # Werkzeug development server can behave poorly with native websockets.
+    print('eventlet not available; falling back to threading (development only)')
+
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
+# Allow all origins for production 
+ALLOWED_ORIGINS = [
+    "*", 
+    "http://localhost:5173",
+]
+# Apply Flask-CORS for regular HTTP endpoints (socket upgrades are handled by python-socketio)
+CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
 app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, cors_allowed_origins=["http://localhost:5173", "http://localhost:5174"], async_mode='threading')
+# Enable engineio/socketio logging to help diagnose origin checks
+socketio = SocketIO(app, cors_allowed_origins=ALLOWED_ORIGINS, async_mode=async_mode, logger=True, engineio_logger=True)
 
 # Store connected users
 connected_users = {}
@@ -117,7 +137,7 @@ def handle_disconnect():
         emit('user_left', user.get('id'), broadcast=True, include_self=False)
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 3001))
+    port = 3000
     print(f'Server running on port {port}')
     print('WebSocket server ready for connections')
-    socketio.run(app, host='0.0.0.0', port=port)
+    socketio.run(app, port=port)

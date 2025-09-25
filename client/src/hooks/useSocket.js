@@ -1,22 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import io from 'socket.io-client';
 
-const URL = import.meta.env.VITE_SOCKET_API_BASE;
 
 const resolveSocketUrl = () => {
-  // Prefer explicit VITE_SOCKET_API_BASE
-  if (import.meta.env.VITE_SOCKET_API_BASE) return import.meta.env.VITE_SOCKET_API_BASE;
-
-  // If running in browser, use same host but port 3001 (common dev setup)
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (host === 'localhost' || host === '127.0.0.1') {
-      // If the frontend was served on a different port, point to 3001 by default
-      return `${URL}`;
-    }
-    // In production, assume socket is mounted on same origin
-    return `${window.location.origin}`;
-  }
+  const URL = import.meta.env.VITE_SOCKET_URL;
+  
 
   return `${URL}`; // Fallback to env variable or default
 };

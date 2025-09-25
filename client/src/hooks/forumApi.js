@@ -10,7 +10,7 @@ const resolveApiBase = () => {
 
   // If running in browser, prefer same origin /api (works in production when proxied)
   if (typeof window !== 'undefined') {
-    // If we're on localhost in development, default to local server port 3001
+    // If we're on localhost in development, default to local server
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       return `${URL}/api`;
     }
