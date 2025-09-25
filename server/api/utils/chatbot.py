@@ -20,7 +20,7 @@ specialized medical advice.
 """
 
 # Initialize Gemini model
-model = genai.GenerativeModel("gemini-1.5-flash")
+model = genai.GenerativeModel("gemini-1.5-flash-8b")
 
 # Crisis keywords list (expand as needed)
 CRISIS_KEYWORDS = [
