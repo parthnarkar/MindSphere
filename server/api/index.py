@@ -11,7 +11,7 @@ forum_posts = []
 screenings = []
 
 
-@app.route("/api/health")
+@app.route("/")
 def health():
 	return jsonify({"status": "ok", "service": "mindsphere-server"})
 
@@ -77,4 +77,4 @@ def api_chat():
 
 
 if __name__ == "__main__":
-	app.run(host="0.0.0.0", port=5000, debug=True)
+	app.run(port=5000, debug=True)
