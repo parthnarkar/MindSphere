@@ -16,24 +16,30 @@ const CrisisResourcesSidebar = () => {
   const crisisAlert = utils.getCrisisAlertProps();
   
   return (
-    <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-      <h3 className="font-semibold text-red-800 mb-3 flex items-center">
-        {crisisAlert.title}
-      </h3>
-      <div className="space-y-3 text-sm">
+    <div className="bg-gradient-to-br from-red-50 to-pink-50 border border-red-200 rounded-2xl p-6 mb-6 shadow-lg">
+      <div className="flex items-center space-x-2 mb-4">
+        <span className="text-red-600 text-xl">🆘</span>
+        <h3 className="font-bold text-red-800 text-lg">
+          {crisisAlert.title}
+        </h3>
+      </div>
+      <div className="space-y-4 text-sm">
         {crisisAlert.resources.map((resource, index) => (
-          <div key={index} className="p-2 bg-white border border-red-100 rounded">
-            <p className="font-medium text-red-700">{resource.name}</p>
-            <p className="text-red-600 font-mono">{resource.contact}</p>
-            <p className="text-red-500 text-xs mt-1">{resource.description}</p>
+          <div key={index} className="p-4 bg-white/80 backdrop-blur-sm border border-red-100 rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200">
+            <p className="font-semibold text-red-700 mb-1">{resource.name}</p>
+            <p className="text-red-600 font-mono text-lg font-bold">{resource.contact}</p>
+            <p className="text-red-500 text-xs mt-2">{resource.description}</p>
           </div>
         ))}
       </div>
-      <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded">
-        <p className="text-xs text-yellow-800">
-          <strong>Remember:</strong> If you're having thoughts of self-harm, you're not alone. 
-          Reach out for help - these resources are available 24/7.
-        </p>
+      <div className="mt-6 p-4 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-xl">
+        <div className="flex items-start space-x-2">
+          <span className="text-yellow-600 text-lg">💛</span>
+          <p className="text-sm text-yellow-800">
+            <strong>Remember:</strong> If you're having thoughts of self-harm, you're not alone. 
+            Reach out for help - these resources are available 24/7.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -67,69 +73,74 @@ const ReportModal = ({ show, target, onClose, onSubmit }) => {
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <h3 className="text-lg font-semibold mb-4">Report Content</h3>
-        <p className="text-sm text-gray-600 mb-4">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-md">
+        <div className="flex items-center space-x-3 mb-6">
+          <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center">
+            <span className="text-red-600 text-lg">🚨</span>
+          </div>
+          <h3 className="text-xl font-bold text-gray-900">Report Content</h3>
+        </div>
+        <p className="text-gray-600 mb-6 leading-relaxed">
           Help us maintain a safe community by reporting inappropriate content.
         </p>
         
         <form onSubmit={handleSubmit}>
-          <div className="space-y-3 mb-6">
-            <label className="flex items-center">
+          <div className="space-y-4 mb-6">
+            <label className="flex items-center p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
               <input 
                 type="radio" 
                 name="report" 
                 value="inappropriate"
                 checked={reportReason === 'inappropriate'}
                 onChange={(e) => setReportReason(e.target.value)}
-                className="mr-2" 
+                className="mr-3 text-red-600 focus:ring-red-500" 
               />
-              <span className="text-sm">Inappropriate content</span>
+              <span className="text-sm font-medium">Inappropriate content</span>
             </label>
-            <label className="flex items-center">
+            <label className="flex items-center p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
               <input 
                 type="radio" 
                 name="report" 
                 value="harassment"
                 checked={reportReason === 'harassment'}
                 onChange={(e) => setReportReason(e.target.value)}
-                className="mr-2" 
+                className="mr-3 text-red-600 focus:ring-red-500" 
               />
-              <span className="text-sm">Harassment or bullying</span>
+              <span className="text-sm font-medium">Harassment or bullying</span>
             </label>
-            <label className="flex items-center">
+            <label className="flex items-center p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
               <input 
                 type="radio" 
                 name="report" 
                 value="spam"
                 checked={reportReason === 'spam'}
                 onChange={(e) => setReportReason(e.target.value)}
-                className="mr-2" 
+                className="mr-3 text-red-600 focus:ring-red-500" 
               />
-              <span className="text-sm">Spam or irrelevant content</span>
+              <span className="text-sm font-medium">Spam or irrelevant content</span>
             </label>
-            <label className="flex items-center">
+            <label className="flex items-center p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
               <input 
                 type="radio" 
                 name="report" 
                 value="misinformation"
                 checked={reportReason === 'misinformation'}
                 onChange={(e) => setReportReason(e.target.value)}
-                className="mr-2" 
+                className="mr-3 text-red-600 focus:ring-red-500" 
               />
-              <span className="text-sm">False information</span>
+              <span className="text-sm font-medium">False information</span>
             </label>
-            <label className="flex items-center">
+            <label className="flex items-center p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
               <input 
                 type="radio" 
                 name="report" 
                 value="crisis"
                 checked={reportReason === 'crisis'}
                 onChange={(e) => setReportReason(e.target.value)}
-                className="mr-2" 
+                className="mr-3 text-red-600 focus:ring-red-500" 
               />
-              <span className="text-sm">Someone may be in crisis</span>
+              <span className="text-sm font-medium">Someone may be in crisis</span>
             </label>
           </div>
           
@@ -138,21 +149,21 @@ const ReportModal = ({ show, target, onClose, onSubmit }) => {
             onChange={(e) => setReportDetails(e.target.value)}
             placeholder="Additional details (optional)"
             rows={3}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+            className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-transparent mb-6 bg-gray-50 focus:bg-white transition-colors"
           />
           
           <div className="flex justify-end space-x-3">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              className="px-6 py-3 text-gray-600 hover:text-gray-800 transition-colors font-medium"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={!reportReason || isSubmitting}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 text-white rounded-xl hover:from-red-700 hover:to-red-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg hover:shadow-xl"
             >
               {isSubmitting ? 'Submitting...' : 'Submit Report'}
             </button>
@@ -712,461 +723,277 @@ const PeerToPeer = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-        {/* Header */}
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+        {/* Header Section with Guidelines */}
         <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">Peer Support Forum</h1>
-              <p className="mt-1 text-sm text-gray-600">
-                Connect with peers and get support from verified counselors
-              </p>
-            </div>
-            <div className="mt-4 sm:mt-0 flex items-center space-x-3">
-              <div className="flex items-center space-x-4">
-                <div className="flex items-center text-sm text-gray-500">
-                  <div className={`w-2 h-2 rounded-full mr-2 ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}></div>
-                  {isConnected ? `${onlineUsers.length} online` : 'Connecting...'}
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center space-x-4 mb-3">
+                  <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
+                    <span className="text-white text-2xl">💬</span>
+                  </div>
+                  <div>
+                    <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                      Peer Support Forum
+                    </h1>
+                    <p className="mt-1 text-calm-blue text-lg">
+                      A safe space to connect and share with peers
+                    </p>
+                  </div>
                 </div>
-                {error && (
-                  <div className="text-sm text-red-600 bg-red-50 px-2 py-1 rounded">
-                    {error}
-                  </div>
-                )}
-              </div>
-              {utils.isAdmin(user.role) && (
-                <button
-                  onClick={() => setShowAdminPanel(!showAdminPanel)}
-                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors text-sm"
-                >
-                  Admin Panel
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Main Content */}
-          <div className="lg:col-span-3">
-            {/* Category Filter & Create Post */}
-            <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4">
-                <div className="flex flex-wrap gap-2 mb-4 sm:mb-0">
-                  {['All', ...categories].map(category => (
-                    <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className={`px-3 py-1 rounded-full text-sm transition-colors ${
-                        selectedCategory === category
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                      }`}
-                    >
-                      {category}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  onClick={() => setShowCreatePost(true)}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  Create Post
-                </button>
-              </div>
-            </div>
-
-            {/* Create Post Modal */}
-            {showCreatePost && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                <div className="bg-white rounded-lg p-6 w-full max-w-md">
-                  <h3 className="text-lg font-semibold mb-4">Create New Post</h3>
-                  {formErrors.length > 0 && (
-                    <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <ul className="text-sm text-red-600">
-                        {formErrors.map((error, index) => (
-                          <li key={index}>• {error}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                  <CrisisWarning content={newPost.content} />
-                  <form onSubmit={handleCreatePost}>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Title
-                      </label>
-                      <input
-                        type="text"
-                        value={newPost.title}
-                        onChange={(e) => setNewPost({...newPost, title: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="What's on your mind?"
-                        required
-                      />
-                    </div>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Content
-                      </label>
-                      <textarea
-                        value={newPost.content}
-                        onChange={(e) => setNewPost({...newPost, content: e.target.value})}
-                        rows={4}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        placeholder="Share your thoughts or ask for support..."
-                        required
-                      />
-                    </div>
-                    <div className="mb-4">
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Category
-                      </label>
-                      <select
-                        value={newPost.category}
-                        onChange={(e) => setNewPost({...newPost, category: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      >
-                        {categories.map(category => (
-                          <option key={category} value={category}>{category}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="mb-6">
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={newPost.anonymous}
-                          onChange={(e) => setNewPost({...newPost, anonymous: e.target.checked})}
-                          className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50"
-                        />
-                        <span className="ml-2 text-sm text-gray-600">Post anonymously</span>
-                      </label>
-                    </div>
-                    <div className="flex justify-end space-x-3">
-                      <button
-                        type="button"
-                        onClick={() => setShowCreatePost(false)}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {loading ? 'Posting...' : 'Post'}
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              </div>
-            )}
-
-            {/* Loading State */}
-            {loading && (
-              <div className="flex justify-center items-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-2 text-gray-600">Loading posts...</span>
-              </div>
-            )}
-
-            {/* Empty State */}
-            {!loading && sortedPosts.length === 0 && (
-              <div className="text-center py-12">
-                <div className="text-gray-400 text-6xl mb-4">💬</div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No posts yet</h3>
-                <p className="text-gray-600">Be the first to start a conversation!</p>
-              </div>
-            )}
-
-            {/* Posts List */}
-            <div className="space-y-6">
-              {sortedPosts.map(post => (
-                <div key={post.id} className="bg-white rounded-lg shadow-sm p-6">
-                  {/* Post Header */}
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start space-x-3">
-                      <img
-                        src={post.author.avatar || 'https://via.placeholder.com/40'}
-                        alt=""
-                        className="w-10 h-10 rounded-full"
-                      />
-                      <div>
-                        <div className="flex items-center space-x-2">
-                          <h3 className="font-semibold text-gray-900">{post.author.name}</h3>
-                          {getRoleBadge(post.author.role)}
-                          {post.isPinned && (
-                            <span className="px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded-full">
-                              📌 Pinned
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-2 text-sm text-gray-500">
-                          <span>{utils.formatTimeAgo(post.createdAt)}</span>
-                          <span>•</span>
-                          <span className="px-2 py-1 bg-gray-100 rounded-full text-xs">
-                            {post.category}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {utils.canModerate(user.role) && (
-                        <button
-                          onClick={() => handlePin(post.id)}
-                          className={`p-2 rounded-lg transition-colors ${
-                            post.isPinned 
-                              ? 'text-yellow-600 hover:bg-yellow-50' 
-                              : 'text-gray-400 hover:bg-gray-50'
-                          }`}
-                          title={post.isPinned ? 'Unpin post' : 'Pin post'}
-                        >
-                          📌
-                        </button>
-                      )}
-                      <button
-                        onClick={() => handleReport({ type: 'post', id: post.id })}
-                        className="p-2 text-gray-400 hover:bg-gray-50 hover:text-red-500 rounded-lg transition-colors"
-                        title="Report content"
-                      >
-                        🚨
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Post Content */}
-                  <CrisisWarning content={post.content} />
-                  <div className="mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900 mb-2">{post.title}</h2>
-                    <p className="text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                  </div>
-
-                  {/* Post Actions */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-4">
-                      <button
-                        onClick={() => handleUpvote(post.id)}
-                        className="flex items-center space-x-1 text-gray-500 hover:text-blue-600 transition-colors"
-                      >
-                        <span>👍</span>
-                        <span>{post.upvotes}</span>
-                      </button>
-                      <button
-                        onClick={() => setActiveReplyTo(activeReplyTo === post.id ? null : post.id)}
-                        className="text-gray-500 hover:text-blue-600 transition-colors"
-                      >
-                        💬 Reply ({post.replies.length})
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Reply Form */}
-                  {activeReplyTo === post.id && (
-                    <div className="mb-4 p-4 bg-gray-50 rounded-lg">
-                      {formErrors.length > 0 && (
-                        <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-600">
-                          {formErrors.map((error, index) => (
-                            <div key={index}>• {error}</div>
-                          ))}
-                        </div>
-                      )}
-                      <CrisisWarning content={replyContent} />
-                      <textarea
-                        value={replyContent}
-                        onChange={(e) => handleReplyTyping(post.id, e.target.value)}
-                        placeholder="Share your thoughts or advice..."
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3"
-                      />
-                      <TypingIndicator postId={post.id} />
-                      <div className="flex justify-end space-x-2">
-                        <button
-                          onClick={() => {
-                            setActiveReplyTo(null);
-                            setReplyContent('');
-                            setFormErrors([]);
-                          }}
-                          className="px-3 py-1 text-gray-600 hover:text-gray-800 transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={() => handleAddReply(post.id)}
-                          disabled={loading}
-                          className="px-3 py-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {loading ? 'Posting...' : 'Reply'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Replies */}
-                  {post.replies.length > 0 && (
-                    <div className="space-y-4">
-                      <h4 className="font-medium text-gray-900">Replies</h4>
-                      {post.replies.map(reply => (
-                        <div key={reply.id} className="flex space-x-3 pl-4 border-l-2 border-gray-100">
-                          <img
-                            src={reply.author.avatar || 'https://via.placeholder.com/32'}
-                            alt=""
-                            className="w-8 h-8 rounded-full"
-                          />
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <span className="font-medium text-gray-900">{reply.author.name}</span>
-                              {getRoleBadge(reply.author.role)}
-                              {reply.isVerified && (
-                                <span className="px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
-                                  ✅ Verified
-                                </span>
-                              )}
-                              <span className="text-xs text-gray-500">{utils.formatTimeAgo(reply.createdAt)}</span>
-                            </div>
-                            <CrisisWarning content={reply.content} />
-                            <p className="text-gray-700 mb-2 whitespace-pre-wrap">{reply.content}</p>
-                            <div className="flex items-center space-x-4">
-                              <button
-                                onClick={() => handleUpvote(post.id, reply.id)}
-                                className="flex items-center space-x-1 text-gray-500 hover:text-blue-600 transition-colors text-sm"
-                              >
-                                <span>👍</span>
-                                <span>{reply.upvotes}</span>
-                              </button>
-                              {utils.canModerate(user.role) && (
-                                <button
-                                  onClick={() => handleVerifyReply(post.id, reply.id)}
-                                  className={`text-sm transition-colors ${
-                                    reply.isVerified 
-                                      ? 'text-green-600 hover:text-green-800' 
-                                      : 'text-gray-500 hover:text-green-600'
-                                  }`}
-                                >
-                                  {reply.isVerified ? '✅ Verified' : 'Verify'}
-                                </button>
-                              )}
-                              <button
-                                onClick={() => handleReport({ type: 'reply', id: reply.id, postId: post.id })}
-                                className="text-gray-400 hover:text-red-500 transition-colors text-sm"
-                              >
-                                Report
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Sidebar */}
-          <div className="lg:col-span-1">
-            {/* Crisis Resources */}
-            <CrisisResourcesSidebar />
-
-            {/* Online Users */}
-            <div className="bg-white rounded-lg shadow-sm p-4 mb-6">
-              <h3 className="font-semibold text-gray-900 mb-3">Online Now ({onlineUsers.length})</h3>
-              <div className="space-y-2">
-                {onlineUsers.map(onlineUser => (
-                  <div key={onlineUser.id} className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                    <span className="text-sm text-gray-700">{onlineUser.name}</span>
-                    {getRoleBadge(onlineUser.role)}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Guidelines */}
-            <div className="bg-white rounded-lg shadow-sm p-4">
-              <h3 className="font-semibold text-gray-900 mb-3">Community Guidelines</h3>
-              <div className="space-y-2 text-sm text-gray-600">
-                <p>• Be respectful and supportive</p>
-                <p>• No personal attacks or harassment</p>
-                <p>• Keep discussions relevant</p>
-                <p>• Report inappropriate content</p>
-                <p>• Seek professional help for crisis situations</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Report Modal */}
-        <ReportModal 
-          show={showReportModal}
-          target={reportTarget}
-          onClose={() => {
-            setShowReportModal(false);
-            setReportTarget(null);
-          }}
-          onSubmit={handleSubmitReport}
-        />
-
-        {/* Admin Panel */}
-        {showAdminPanel && user.role === 'admin' && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-4xl max-h-[80vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="text-lg font-semibold">Admin Dashboard</h3>
-                <button
-                  onClick={() => setShowAdminPanel(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
               </div>
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                <div className="bg-blue-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-blue-900">Total Posts</h4>
-                  <p className="text-2xl font-bold text-blue-600">{posts.length}</p>
+              {/* Guidelines Card */}
+              <div className="mt-4 sm:mt-0 p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl max-w-sm border border-blue-100 shadow-lg">
+                <div className="flex items-center space-x-2 mb-3">
+                  <span className="text-blue-600 text-lg">📋</span>
+                  <h3 className="text-sm font-semibold text-deep-blue">
+                    Community Guidelines
+                  </h3>
                 </div>
-                <div className="bg-green-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-green-900">Active Users</h4>
-                  <p className="text-2xl font-bold text-green-600">{onlineUsers.length}</p>
-                </div>
-                <div className="bg-yellow-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-yellow-900">Reports</h4>
-                  <p className="text-2xl font-bold text-yellow-600">3</p>
-                </div>
+                <ul className="text-xs text-calm-blue space-y-2">
+                  <li className="flex items-center space-x-2">
+                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                    <span>Be respectful and supportive</span>
+                  </li>
+                  <li className="flex items-center space-x-2">
+                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                    <span>Maintain privacy and confidentiality</span>
+                  </li>
+                  <li className="flex items-center space-x-2">
+                    <span className="w-1.5 h-1.5 bg-blue-400 rounded-full"></span>
+                    <span>Focus on positive interactions</span>
+                  </li>
+                </ul>
               </div>
+            </div>
+          </div>
+        </div>
 
-              <div className="space-y-6">
-                <div>
-                  <h4 className="font-semibold mb-3">Category Management</h4>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {categories.map(category => (
-                      <span key={category} className="px-3 py-1 bg-gray-100 rounded-full text-sm">
-                        {category}
-                      </span>
-                    ))}
+        {/* Filters and New Post */}
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
+          <div className="flex flex-wrap gap-3">
+            {['Recent', 'Popular', 'My Posts'].map(filter => (
+              <button
+                key={filter}
+                className="px-6 py-3 text-sm font-medium text-calm-blue bg-white/80 backdrop-blur-sm rounded-full hover:bg-blue-50 hover:shadow-md transition-all duration-200 border border-white/40 hover:border-blue-200"
+              >
+                {filter}
+              </button>
+            ))}
+          </div>
+          
+          <button 
+            onClick={() => setShowCreatePost(true)}
+            className="px-8 py-3 bg-gradient-to-r from-warm-orange to-orange-500 text-white rounded-full hover:from-warm-orange/90 hover:to-orange-600 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5"
+          >
+            <span className="text-lg">✍️</span>
+            <span className="text-sm font-medium">New Post</span>
+          </button>
+        </div>
+
+        {/* Posts Grid */}
+        <div className="grid gap-8">
+          {posts.map((post, index) => (
+            <div 
+              key={index}
+              className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-8 hover:shadow-xl hover:bg-white/90 transition-all duration-300 transform hover:-translate-y-1"
+            >
+              {/* Post Header */}
+              <div className="flex items-start justify-between mb-6">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center shadow-md">
+                    <span className="text-calm-blue font-bold text-lg">
+                      {(post.author?.name || 'Anonymous').charAt(0)}
+                    </span>
                   </div>
-                  <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm">
-                    Add Category
-                  </button>
-                </div>
-
-                <div>
-                  <h4 className="font-semibold mb-3">Recent Reports</h4>
-                  <div className="space-y-2">
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                      <p className="text-sm font-medium">Inappropriate content reported</p>
-                      <p className="text-xs text-gray-600">Post: "Managing Test Anxiety" - 2 hours ago</p>
-                      <div className="mt-2 space-x-2">
-                        <button className="px-2 py-1 bg-red-600 text-white rounded text-xs">Remove</button>
-                        <button className="px-2 py-1 bg-gray-600 text-white rounded text-xs">Dismiss</button>
-                      </div>
+                  <div>
+                    <h3 className="font-semibold text-deep-blue text-lg">{post.author?.name || 'Anonymous'}</h3>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-sm text-calm-blue">{utils.formatTimeAgo(post.createdAt)}</p>
+                      <span className="w-1 h-1 bg-calm-blue rounded-full"></span>
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                        {post.category}
+                      </span>
                     </div>
                   </div>
                 </div>
+                
+                <button className="text-gray-400 hover:text-calm-blue transition-colors duration-200 p-2 hover:bg-gray-50 rounded-lg">
+                  <span className="text-lg">⋯</span>
+                </button>
               </div>
+
+              {/* Post Content */}
+              <div className="text-deep-blue leading-relaxed mb-6 text-lg">
+                <h2 className="font-semibold text-xl mb-3 text-gray-900">{post.title}</h2>
+                <p className="text-gray-700">{post.content}</p>
+              </div>
+
+              {/* Post Footer */}
+              <div className="flex items-center justify-between pt-6 border-t border-gray-100">
+                <div className="flex items-center gap-6">
+                  <button className="flex items-center gap-2 text-sm font-medium text-calm-blue hover:text-blue-700 transition-colors duration-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-full">
+                    <span className="text-lg">💭</span>
+                    <span>Reply</span>
+                  </button>
+                  <button className="flex items-center gap-2 text-sm font-medium text-calm-blue hover:text-green-700 transition-colors duration-200 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-full">
+                    <span className="text-lg">🤝</span>
+                    <span>Helpful</span>
+                  </button>
+                </div>
+                
+                <div className="flex items-center gap-3 text-sm text-calm-blue">
+                  <span className="flex items-center gap-1">
+                    <span className="text-lg">💬</span>
+                    <span>{post.replies?.length || 0} replies</span>
+                  </span>
+                  <span className="w-1 h-1 bg-calm-blue rounded-full"></span>
+                  <span className="flex items-center gap-1">
+                    <span className="text-lg">👍</span>
+                    <span>{post.upvotes || 0} found helpful</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Loading State */}
+        {loading && (
+          <div className="flex justify-center items-center py-16">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-8">
+              <div className="flex items-center space-x-4">
+                <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-200 border-t-blue-600"></div>
+                <span className="text-calm-blue font-medium">Loading discussions...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!loading && posts.length === 0 && (
+          <div className="text-center py-16">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-12">
+              <div className="text-8xl mb-6">💭</div>
+              <h3 className="text-2xl font-semibold text-deep-blue mb-3">
+                No discussions yet
+              </h3>
+              <p className="text-calm-blue text-lg mb-6">
+                Start a conversation to connect with peers
+              </p>
+              <button 
+                onClick={() => setShowCreatePost(true)}
+                className="px-8 py-3 bg-gradient-to-r from-warm-orange to-orange-500 text-white rounded-full hover:from-warm-orange/90 hover:to-orange-600 transition-all duration-200 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 mx-auto"
+              >
+                <span className="text-lg">✍️</span>
+                <span className="font-medium">Create First Post</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Create Post Modal */}
+        {showCreatePost && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl border border-white/20 p-8 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
+                  <span className="text-blue-600 text-lg">✍️</span>
+                </div>
+                <h3 className="text-xl font-bold text-gray-900">Create New Post</h3>
+              </div>
+              
+              {formErrors.length > 0 && (
+                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                  <ul className="text-sm text-red-600">
+                    {formErrors.map((error, index) => (
+                      <li key={index} className="flex items-center space-x-2">
+                        <span>⚠️</span>
+                        <span>{error}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              
+              <CrisisWarning content={newPost.content} />
+              
+              <form onSubmit={handleCreatePost}>
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Title
+                  </label>
+                  <input
+                    type="text"
+                    value={newPost.title}
+                    onChange={(e) => setNewPost({...newPost, title: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-colors"
+                    placeholder="What's on your mind?"
+                    required
+                  />
+                </div>
+                
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Content
+                  </label>
+                  <textarea
+                    value={newPost.content}
+                    onChange={(e) => setNewPost({...newPost, content: e.target.value})}
+                    rows={6}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-colors"
+                    placeholder="Share your thoughts or ask for support..."
+                    required
+                  />
+                </div>
+                
+                <div className="mb-6">
+                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                    Category
+                  </label>
+                  <select
+                    value={newPost.category}
+                    onChange={(e) => setNewPost({...newPost, category: e.target.value})}
+                    className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-colors"
+                  >
+                    {categories.map(category => (
+                      <option key={category} value={category}>{category}</option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div className="mb-8">
+                  <label className="flex items-center p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={newPost.anonymous}
+                      onChange={(e) => setNewPost({...newPost, anonymous: e.target.checked})}
+                      className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50 mr-3"
+                    />
+                    <span className="text-sm font-medium text-gray-700">Post anonymously</span>
+                  </label>
+                </div>
+                
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreatePost(false)}
+                    className="px-6 py-3 text-gray-600 hover:text-gray-800 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 text-white rounded-xl hover:from-blue-700 hover:to-blue-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed font-medium shadow-lg hover:shadow-xl"
+                  >
+                    {loading ? 'Posting...' : 'Create Post'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
