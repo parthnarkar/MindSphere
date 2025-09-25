@@ -1,3 +1,8 @@
-let local_Link = "http://localhost:5000";
+let API = import.meta.env.VITE_API_BASE;
 
-export const API = local_Link;
+// Auto detect environment without needing explicit env var
+if (import.meta.env.MODE === "production") {
+  API = import.meta.env.VITE_DEPLOYED_BASE;
+}
+
+export { API };
