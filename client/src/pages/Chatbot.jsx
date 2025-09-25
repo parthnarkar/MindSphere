@@ -12,13 +12,32 @@ export default function Chatbot() {
     const user = { from: "user", text: input };
     setMessages((m) => [...m, user]);
     setInput("");
-    // prototype: echo bot with safe-response placeholder
-    setTimeout(() => {
-      setMessages((m) => [
-        ...m,
-        { from: "bot", text: `I hear you. (Prototype reply) — you said: "${user.text}"` },
-      ]);
-    }, 700);
+
+    const base = API;
+    const url = `${base.replace(/\/$/, "")}/api/chat`;
+
+    // show typing indicator
+    setMessages((m) => [...m, { from: "bot", text: "..." }]);
+
+    fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: user.text }),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        // remove typing indicator (last bot message) and append real reply
+        setMessages((m) => {
+          const withoutTyping = m.slice(0, -1);
+          return [...withoutTyping, { from: "bot", text: data.reply || "(no reply)" }];
+        });
+      })
+      .catch((err) => {
+        setMessages((m) => {
+          const withoutTyping = m.slice(0, -1);
+          return [...withoutTyping, { from: "bot", text: "(Error contacting server)" }];
+        });
+      });
   }
 
   return (

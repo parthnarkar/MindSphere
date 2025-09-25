@@ -9,6 +9,11 @@ CORS(app)
 bookings = []
 forum_posts = []
 screenings = []
+resources = [
+	{"id": 1, "title": "Intro to coping skills", "type": "video", "language": "English", "url": ""},
+	{"id": 2, "title": "How to support a friend", "type": "video", "language": "Hindi", "url": ""},
+	{"id": 3, "title": "Offline resource map", "type": "guide", "language": "Regional", "url": ""},
+]
 
 
 @app.route("/")
@@ -24,6 +29,25 @@ def api_bookings():
 		bookings.append(entry)
 		return jsonify({"ok": True, "id": entry["id"]}), 201
 	return jsonify({"bookings": bookings})
+
+
+@app.route("/api/resources", methods=["GET", "POST"])
+def api_resources():
+	if request.method == "POST":
+		data = request.get_json() or {}
+		title = data.get("title")
+		if not title:
+			return jsonify({"error": "title required"}), 400
+		item = {
+			"id": int(time.time() * 1000),
+			"title": title,
+			"type": data.get("type", "guide"),
+			"language": data.get("language", "English"),
+			"url": data.get("url", ""),
+		}
+		resources.insert(0, item)
+		return jsonify(item), 201
+	return jsonify({"resources": resources})
 
 
 @app.route("/api/forum", methods=["GET", "POST"])

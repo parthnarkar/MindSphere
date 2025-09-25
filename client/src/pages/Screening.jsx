@@ -25,6 +25,8 @@ function ScreeningQuestion({ q, idx, onChange, value }) {
 export default function Screening() {
   const [answers, setAnswers] = useState(Array(samplePHQ.length).fill(0));
   const [score, setScore] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState(null);
 
   function setAnswer(i, val) {
     const next = [...answers];
@@ -35,12 +37,23 @@ export default function Screening() {
   function submit() {
     const s = answers.reduce((a, b) => a + b, 0);
     setScore(s);
-    const API = import.meta.env.VITE_API_BASE || "http://localhost:5000";
-    fetch(`${API}/api/screenings`, {
+    setLoading(true);
+    setMessage(null);
+
+    const url = API;
+
+    fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ score: s }),
-    }).catch(() => {});
+    })
+      .then((r) => {
+        if (!r.ok) throw new Error(`Status ${r.status}`);
+        return r.json();
+      })
+      .then(() => setMessage("Screening submitted"))
+      .catch(() => setMessage("Failed to submit screening"))
+      .finally(() => setLoading(false));
   }
 
   return (
