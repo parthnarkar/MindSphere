@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
@@ -8,6 +9,8 @@ load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 app = Flask(__name__)
+# Enable CORS for local dev (Vite on 5173 -> Flask on 5000)
+CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=False)
 
 """Safety-focused student mental health chatbot.
 
@@ -43,7 +46,8 @@ COPING_SYSTEM_PROMPT = (
     "Prefer concise lists with actionable steps. Include:")
 
 COPING_RESPONSE_STRUCTURE = (
-    "\n- A brief validation (one sentence)\n"
+    "\n- Start with a warm, brief greeting if the user greeted you\n"
+    "- A brief validation (one sentence)\n"
     "- 3–5 concrete, low-risk coping strategies tailored to the user's situation\n"
     "- One immediate next step they can try now (breathing/grounding or similar)\n"
     "- Suggest campus or professional resources if concerns persist or affect safety/functioning\n"
@@ -60,9 +64,22 @@ def looks_student_mh_related(message: str) -> bool:
     message_lower = message.lower()
     return any(keyword in message_lower for keyword in STUDENT_MH_KEYWORDS)
 
-@app.route("/chat", methods=["POST"])
+# Basic greeting detection
+GREETING_KEYWORDS = [
+    "hi", "hello", "hey", "namaste", "good morning", "good afternoon", "good evening"
+]
+
+def detect_greeting(message: str) -> bool:
+    message_lower = message.lower().strip()
+    return any(g in message_lower for g in GREETING_KEYWORDS)
+
+@app.route("/chat", methods=["POST", "OPTIONS"])
 def chat():
     try:
+        # Handle CORS preflight explicitly
+        if request.method == "OPTIONS":
+            return "", 204
+
         data = request.json
         user_message = data.get("message", "")
 
@@ -84,24 +101,22 @@ def chat():
                 "escalate": True
             })
 
-        # 🔹 If not clearly student mental-health related, set expectations
-        if not looks_student_mh_related(user_message):
-            nudge = (
-                "I’m here specifically to offer coping strategies for student mental-health concerns "
-                "like academic stress, anxiety, sleep difficulties, and loneliness. "
-                "Could you share a bit about what’s challenging you right now (e.g., exams, deadlines, sleep, social stress)?"
+        # 🔹 Quick friendly greeting if user only greets
+        if detect_greeting(user_message) and len(user_message.strip()) <= 24:
+            greet_text = (
+                "Hello! I’m here to share practical coping strategies for stress and mental health. "
+                "What’s on your mind today? (e.g., exams, sleep, anxiety, motivation)"
             )
-            return jsonify({
-                "response": nudge,
-                "escalate": False
-            })
+            return jsonify({"response": greet_text, "escalate": False})
 
         # 🔹 Otherwise, request coping-only guidance from the model
+        greeting_hint = "The user greeted you; open with a one-sentence friendly greeting." if detect_greeting(user_message) else ""
         coping_prompt = (
             f"{COPING_SYSTEM_PROMPT} {COPING_RESPONSE_STRUCTURE}\n\n"
             f"User context: {user_message}\n\n"
             "Constraints: Keep it concise and actionable; avoid diagnosis; encourage campus/pro help if needed; "
             "write for a university student audience; avoid high-risk instructions; no medical or legal advice."
+            f" {greeting_hint}"
         )
 
         response = model.generate_content(coping_prompt)

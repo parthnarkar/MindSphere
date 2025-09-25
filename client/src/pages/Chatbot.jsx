@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { API } from "../hooks/helper";
 
 export default function Chatbot() {
   const [messages, setMessages] = useState([
@@ -13,8 +12,7 @@ export default function Chatbot() {
     setMessages((m) => [...m, user]);
     setInput("");
 
-    const base = API;
-    const url = `${base.replace(/\/$/, "")}/api/chat`;
+    const url = "http://localhost:5000/chat";
 
     // show typing indicator
     setMessages((m) => [...m, { from: "bot", text: "..." }]);
@@ -22,14 +20,23 @@ export default function Chatbot() {
     fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: user.text }),
+      body: JSON.stringify({ message: user.text }),
     })
       .then((r) => r.json())
       .then((data) => {
         // remove typing indicator (last bot message) and append real reply
         setMessages((m) => {
           const withoutTyping = m.slice(0, -1);
-          return [...withoutTyping, { from: "bot", text: data.reply || "(no reply)" }];
+          const reply = data.response || "(no reply)";
+          const msgs = [...withoutTyping, { from: "bot", text: reply }];
+          if (data.escalate) {
+            msgs.push({
+              from: "bot",
+              text:
+                "If you feel unsafe or need urgent help, consider reaching out to Tele-MANAS 14416 (India), 988 (US), or local emergency services.",
+            });
+          }
+          return msgs;
         });
       })
       .catch((err) => {
@@ -65,7 +72,7 @@ export default function Chatbot() {
         </button>
       </div>
 
-      <p className="text-sm text-gray-500 mt-3">Prototype bot — integrate with a safe LLM and human-in-loop for production.</p>
+      <p className="text-sm text-gray-500 mt-3">Supportive strategies only. Not a crisis or medical service.</p>
     </div>
   );
 }
