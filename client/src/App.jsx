@@ -5,6 +5,7 @@ import Booking from "./pages/Booking";
 import Forum from "./pages/Forum";
 import Resources from "./pages/Resources";
 import Admin from "./pages/Admin";
+import PeerToPeer from "./pages/Peer-to-Peer";
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
           <h1 className="text-xl font-semibold">MindSphere (Prototype)</h1>
           <nav className="space-x-4">
             <Link to="/" className="text-sm text-blue-600">Chat</Link>
+            <Link to="/peer-to-peer" className="text-sm text-blue-600">Peer-to-Peer Conversation</Link>
             <Link to="/screening" className="text-sm text-blue-600">Screening</Link>
             <Link to="/booking" className="text-sm text-blue-600">Booking</Link>
             <Link to="/forum" className="text-sm text-blue-600">Forum</Link>
@@ -26,6 +28,7 @@ function App() {
       <main className="max-w-4xl mx-auto p-4">
         <Routes>
           <Route path="/" element={<Chatbot />} />
+          <Route path="/peer-to-peer" element={<PeerToPeer />} />
           <Route path="/screening" element={<Screening />} />
           <Route path="/booking" element={<Booking />} />
           <Route path="/forum" element={<Forum />} />
