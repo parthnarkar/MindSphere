@@ -21,6 +21,29 @@ def health():
 	return jsonify({"status": "ok", "service": "mindsphere-server"})
 
 
+@app.route("/", methods=["POST"])
+def root_post():
+	# Some platforms or misconfigured frontends POST to the site root.
+	# Attempt to dispatch based on the JSON payload keys to a matching handler.
+	data = request.get_json(silent=True) or {}
+	if not isinstance(data, dict):
+		return jsonify({"error": "invalid payload"}), 400
+
+	# Route heuristics:
+	if "text" in data:
+		return api_chat()
+	if "score" in data:
+		return api_screenings()
+	if "title" in data:
+		return api_resources()
+	if "name" in data and "time" in data:
+		return api_bookings()
+	if "text" in data:
+		return api_forum()
+
+	return jsonify({"error": "unrecognized payload"}), 400
+
+
 @app.route("/api/bookings", methods=["GET", "POST"])
 def api_bookings():
 	if request.method == "POST":
