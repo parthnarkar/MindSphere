@@ -4,14 +4,15 @@ import time
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
+from difflib import SequenceMatcher
 
 # Load API key
 load_dotenv()
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 app = Flask(__name__)
-# Enable CORS for local dev (Vite on 5173 -> Flask on 5000)
-CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=False)
+# Enable CORS for local dev (Vite on 5173/5174 -> Flask on 5000)
+CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"]}}, supports_credentials=False)
 
 # In-memory prototype storage (replace with DB in production)
 bookings = []
@@ -33,11 +34,13 @@ specialized medical advice.
 # Initialize Gemini model
 model = genai.GenerativeModel("gemini-1.5-flash-8b")
 
-# Crisis keywords list (expand as needed)
+# Crisis keywords list - only clear crisis indicators
 CRISIS_KEYWORDS = [
     "suicide", "kill myself", "end my life", "self harm",
-    "self-harm", "hurt myself", "die", "worthless", "no reason to live",
-    "hang myself", "overdose", "jump off", "cut myself"
+    "self-harm", "hurt myself", "no reason to live",
+    "hang myself", "overdose", "jump off", "cut myself",
+    "want to die", "going to kill", "planning to hurt",
+    "thinking of suicide", "suicidal thoughts", "end it all"
 ]
 
 # Topics that indicate student mental health context; if absent, nudge user
@@ -54,7 +57,15 @@ STUDENT_MH_KEYWORDS = [
     "uncertainty", "change", "transition", "adjustment", "coping", "emotions",
     "feelings", "mental", "health", "wellbeing", "self-care", "therapy",
     "counseling", "support", "help", "struggling", "difficult", "hard",
-    "challenging", "crisis", "emergency", "suicidal", "self-harm", "harm"
+    "challenging", "crisis", "emergency", "suicidal", "self-harm", "harm",
+    "well", "unwell", "sick", "ill", "pain", "hurt", "ache", "symptoms",
+    "mood", "moody", "irritable", "cranky", "miserable", "hopeless", "empty",
+    "numb", "disconnected", "isolated", "withdrawn", "avoiding", "avoid",
+    "procrastinate", "procrastinating", "unmotivated", "lazy", "unfocused",
+    "distracted", "overthinking", "ruminating", "obsessing", "paranoid",
+    "phobia", "phobic", "trauma", "traumatic", "ptsd", "panic attack",
+    "breakdown", "meltdown", "triggered", "triggering", "flashback",
+    "nightmare", "nightmares", "dreams", "dreaming", "night terrors"
 ]
 
 # System-style guidance to constrain the LLM output to coping strategies only
@@ -80,17 +91,95 @@ GREETING_KEYWORDS = [
 ]
 
 def detect_crisis(message: str) -> bool:
-    """Check if the message contains any crisis keywords."""
+    """Check if the message contains clear crisis indicators."""
     message_lower = message.lower()
-    return any(keyword in message_lower for keyword in CRISIS_KEYWORDS)
+    
+    # Check for exact matches first (highest priority for crisis detection)
+    for keyword in CRISIS_KEYWORDS:
+        if keyword in message_lower:
+            return True
+    
+    # Check for fuzzy matches only for very specific crisis terms (higher threshold)
+    high_risk_terms = ["suicide", "kill myself", "end my life", "self harm", "hurt myself"]
+    return contains_fuzzy_keywords(message, high_risk_terms, threshold=0.85)
 
 def looks_student_mh_related(message: str) -> bool:
     message_lower = message.lower()
-    return any(keyword in message_lower for keyword in STUDENT_MH_KEYWORDS)
+    
+    # Check for direct keyword matches (exact)
+    if any(keyword in message_lower for keyword in STUDENT_MH_KEYWORDS):
+        return True
+    
+    # Check for fuzzy keyword matches (handles typos)
+    if contains_fuzzy_keywords(message, STUDENT_MH_KEYWORDS, threshold=0.7):
+        return True
+    
+    # Check for common mental health phrases (exact)
+    mental_health_phrases = [
+        "not feeling", "don't feel", "feel bad", "feel terrible", "feel awful",
+        "feel down", "feel low", "feel empty", "feel numb", "feel lost",
+        "can't cope", "can't handle", "too much", "overwhelming", "breaking down",
+        "falling apart", "losing it", "going crazy", "losing control",
+        "need help", "need support", "need someone", "alone", "isolated",
+        "no one understands", "no one gets it", "everyone else", "different",
+        "not normal", "something wrong", "not myself", "not me anymore"
+    ]
+    
+    if any(phrase in message_lower for phrase in mental_health_phrases):
+        return True
+    
+    # Check for fuzzy phrase matches (handles typos in phrases)
+    for phrase in mental_health_phrases:
+        phrase_words = phrase.split()
+        message_words = message_lower.split()
+        
+        # Check if all words in phrase have fuzzy matches in message
+        matches = 0
+        for phrase_word in phrase_words:
+            for msg_word in message_words:
+                clean_msg_word = ''.join(c for c in msg_word if c.isalnum())
+                if fuzzy_match(clean_msg_word, [phrase_word], threshold=0.7):
+                    matches += 1
+                    break
+        
+        # If most words match, consider it a match
+        if matches >= len(phrase_words) * 0.7:
+            return True
+    
+    return False
 
 def detect_greeting(message: str) -> bool:
     message_lower = message.lower().strip()
     return any(g in message_lower for g in GREETING_KEYWORDS)
+
+def fuzzy_match(word: str, target_words: list, threshold: float = 0.7) -> bool:
+    """Check if word matches any target word with fuzzy matching for typos."""
+    word_lower = word.lower()
+    
+    # First try exact match
+    if word_lower in [w.lower() for w in target_words]:
+        return True
+    
+    # Then try fuzzy matching
+    for target in target_words:
+        target_lower = target.lower()
+        similarity = SequenceMatcher(None, word_lower, target_lower).ratio()
+        if similarity >= threshold:
+            return True
+    
+    return False
+
+def contains_fuzzy_keywords(message: str, keywords: list, threshold: float = 0.7) -> bool:
+    """Check if message contains keywords with fuzzy matching."""
+    words = message.lower().split()
+    
+    for word in words:
+        # Remove punctuation for better matching
+        clean_word = ''.join(c for c in word if c.isalnum())
+        if fuzzy_match(clean_word, keywords, threshold):
+            return True
+    
+    return False
 
 
 @app.route("/")

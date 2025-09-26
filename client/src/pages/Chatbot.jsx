@@ -28,15 +28,7 @@ export default function Chatbot() {
         setMessages((m) => {
           const withoutTyping = m.slice(0, -1);
           const reply = data.response || "(no reply)";
-          const msgs = [...withoutTyping, { from: "bot", text: reply }];
-          if (data.escalate) {
-            msgs.push({
-              from: "bot",
-              text:
-                "If you feel unsafe or need urgent help, consider reaching out to Tele-MANAS 14416 (India), 988 (US), or local emergency services.",
-            });
-          }
-          return msgs;
+          return [...withoutTyping, { from: "bot", text: reply }];
         });
       })
       .catch((err) => {
