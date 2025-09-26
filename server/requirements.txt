@@ -1,2 +1,4 @@
 Flask>=2.3
 flask-cors>=3.0
+google-generativeai
+python-dotenv
