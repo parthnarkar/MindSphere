@@ -5,7 +5,10 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 from difflib import SequenceMatcher
+<<<<<<< HEAD
 from datetime import datetime, timedelta
+=======
+>>>>>>> bcf35da (Add client fetching functionality to Counsellor Dashboard and implement MongoDB connection in API)
 from pymongo import MongoClient
 
 # Load API key
@@ -39,6 +42,18 @@ resources = [
 	{"id": 2, "title": "How to support a friend", "type": "video", "language": "Hindi", "url": ""},
 	{"id": 3, "title": "Offline resource map", "type": "guide", "language": "Regional", "url": ""},
 ]
+
+# Optional MongoDB connection: if MONGO_URI is set in environment, use it.
+load_dotenv()
+MONGO_URI = os.getenv("MONGO_URI")
+mongo_client = None
+mongo_db = None
+if MONGO_URI:
+	try:
+		mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
+		mongo_db = mongo_client.get_default_database()
+	except Exception as e:
+		print("Warning: could not connect to MongoDB:", e)
 
 """Safety-focused student mental health chatbot.
 
@@ -293,6 +308,7 @@ def api_admin():
 	return jsonify(metrics)
 
 
+<<<<<<< HEAD
 # ----------------------------- PHQ-9 Endpoints -----------------------------
 
 def _serialize_phq9(doc):
@@ -362,6 +378,32 @@ def phq9_get_latest(email: str):
         return jsonify(_serialize_phq9(doc)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+=======
+@app.route("/api/clients", methods=["GET"])
+def api_clients():
+	"""Return client-submitted form entries. If MongoDB is configured (MONGO_URI), read from 'clients' collection."""
+	try:
+		# If a mongo_db is available, read the documents
+		if 'mongo_db' in globals() and mongo_db:
+			coll = mongo_db.get_collection('clients')
+			docs = list(coll.find().sort([('createdAt', -1)]).limit(200))
+			for d in docs:
+				d['id'] = str(d.get('_id'))
+				if '_id' in d:
+					del d['_id']
+				if 'createdAt' in d:
+					try:
+						d['createdAt'] = d['createdAt'].isoformat()
+					except Exception:
+						d['createdAt'] = str(d['createdAt'])
+			return jsonify({'clients': docs})
+
+		# Fallback sample
+		sample = [{ 'id': 'sample-1', 'name': 'Student A', 'email': 'a@example.edu', 'submittedAt': '2025-01-01T10:00:00' }]
+		return jsonify({'clients': sample})
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+>>>>>>> bcf35da (Add client fetching functionality to Counsellor Dashboard and implement MongoDB connection in API)
 
 
 @app.route("/api/chat", methods=["POST", "OPTIONS"])

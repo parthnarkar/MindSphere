@@ -7,12 +7,15 @@ const samplePHQ = [
   "Trouble falling or staying asleep, or sleeping too much",
 ];
 
-
 function ScreeningQuestion({ q, idx, onChange, value }) {
   return (
-    <div className="mb-3">
-      <div className="font-medium">{idx + 1}. {q}</div>
-      <select className="mt-1 border rounded px-2 py-1" value={value} onChange={(e) => onChange(idx, Number(e.target.value))}>
+    <div className="mb-6">
+      <div className="text-deep-blue font-medium text-lg mb-3">{idx + 1}. {q}</div>
+      <select 
+        className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:border-calm-blue focus:ring-2 focus:ring-calm-blue focus:ring-opacity-20 transition-colors text-deep-blue font-sans" 
+        value={value} 
+        onChange={(e) => onChange(idx, Number(e.target.value))}
+      >
         <option value={0}>Not at all</option>
         <option value={1}>Several days</option>
         <option value={2}>More than half the days</option>
@@ -57,18 +60,41 @@ export default function Screening() {
   }
 
   return (
-    <div>
-      <h2 className="text-2xl font-semibold mb-4">Screening Tools (PHQ-9 prototype)</h2>
-      <p className="text-sm text-gray-600 mb-4">This is a prototype demo of screening. Scores are illustrative only.</p>
+    <div className="bg-beige min-h-screen px-4 py-8 font-sans">
+      <div className="max-w-2xl mx-auto">
+        <h2 className="text-3xl font-bold text-deep-blue mb-2">Screening Tools (PHQ-9 prototype)</h2>
+        <p className="text-deep-blue text-opacity-75 mb-8">This is a prototype demo of screening. Scores are illustrative only.</p>
 
-      <div className="bg-white p-4 rounded shadow">
-        {samplePHQ.map((q, i) => (
-          <ScreeningQuestion key={i} q={q} idx={i} onChange={setAnswer} value={answers[i]} />
-        ))}
+        <div className="bg-white rounded-xl shadow-lg p-8">
+          {samplePHQ.map((q, i) => (
+            <ScreeningQuestion key={i} q={q} idx={i} onChange={setAnswer} value={answers[i]} />
+          ))}
 
-        <div className="mt-4 flex items-center gap-2">
-          <button className="bg-green-600 text-white px-4 py-2 rounded" onClick={submit}>Calculate</button>
-          {score !== null && <div className="text-sm">Score: <strong>{score}</strong> — low/medium/high (prototype)</div>}
+          <div className="mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <button 
+              className="bg-warm-blue text-orange px-6 py-3 rounded-full font-medium hover:bg-blue-600 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed" 
+              onClick={submit}
+              disabled={loading}
+            >
+              {loading ? "Calculating..." : "Calculate"}
+            </button>
+            
+            {score !== null && (
+              <div className="bg-blue-50 text-deep-blue px-4 py-2 rounded-lg text-sm">
+                Score: <strong className="font-semibold">{score}</strong> — low/medium/high (prototype)
+              </div>
+            )}
+            
+            {message && (
+              <div className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                message.includes("Failed") 
+                  ? "bg-red-50 text-critical-red" 
+                  : "bg-green-50 text-green-700"
+              }`}>
+                {message}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

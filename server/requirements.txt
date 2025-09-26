@@ -1,5 +1,10 @@
 Flask>=2.3
 flask-cors>=3.0
+<<<<<<< HEAD
 google-generativeai
 python-dotenv
 pymongo>=4.6
+=======
+pymongo>=4.0
+python-dotenv>=1.0
+>>>>>>> bcf35da (Add client fetching functionality to Counsellor Dashboard and implement MongoDB connection in API)

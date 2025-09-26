@@ -5,6 +5,9 @@ import { collection, query, where, getDocs, doc, getDoc } from "firebase/firesto
 const CounsellorDashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [counsellor, setCounsellor] = useState(null);
+  const [clients, setClients] = useState([]);
+  const [clientsLoading, setClientsLoading] = useState(true);
+  const [clientsError, setClientsError] = useState(null);
 
   // Fetch counsellor info
   useEffect(() => {
@@ -41,6 +44,26 @@ const CounsellorDashboard = () => {
     };
 
     fetchAppointments();
+  }, []);
+
+  // Fetch clients submitted via user form (from server /api/clients)
+  useEffect(() => {
+    const fetchClients = async () => {
+      setClientsLoading(true);
+      try {
+        const res = await fetch('/api/clients');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        setClients(data.clients || []);
+      } catch (err) {
+        console.error('Error fetching clients:', err);
+        setClientsError(err.message || 'Failed to load clients');
+      } finally {
+        setClientsLoading(false);
+      }
+    };
+
+    fetchClients();
   }, []);
 
   const getStatusColor = (status) => {
@@ -103,6 +126,31 @@ const CounsellorDashboard = () => {
                     </p>
                   )}
                 </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Clients Section */}
+      <div className="mb-8">
+        <h2 className="text-2xl font-bold text-blue-700 mb-4">Submitted Clients</h2>
+        {clientsLoading ? (
+          <p className="text-gray-600">Loading clients...</p>
+        ) : clientsError ? (
+          <p className="text-red-600">Error: {clientsError}</p>
+        ) : clients.length === 0 ? (
+          <p className="text-gray-500 text-center py-6">No clients submitted yet.</p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {clients.map((c) => (
+              <div key={c.id} className="bg-white shadow-lg rounded-2xl p-5 hover:shadow-2xl transition duration-300">
+                <h3 className="text-xl font-semibold text-gray-800 mb-1">{c.name || c.fullName || 'Anonymous'}</h3>
+                {c.email && <p className="text-sm text-gray-600 mb-1">📧 {c.email}</p>}
+                {c.phone && <p className="text-sm text-gray-600 mb-1">📞 {c.phone}</p>}
+                {c.submittedAt && <p className="text-xs text-gray-400">Submitted: {c.submittedAt}</p>}
+                {c.createdAt && <p className="text-xs text-gray-400">Created: {c.createdAt}</p>}
+                {c.details && <p className="text-sm text-gray-700 mt-2">{c.details}</p>}
               </div>
             ))}
           </div>
