@@ -165,20 +165,6 @@ function App() {
         />
       )}
 
-      {/* Counsellor Tabs */}
-      {user && user.role === "counsellor" && (
-        <div className="flex space-x-6 border-b mb-6">
-          <button className="py-2 px-4 font-semibold text-blue-700 border-b-2 border-blue-700">
-            Appointments
-          </button>
-          <button className="py-2 px-4 font-semibold text-gray-700 hover:text-blue-700">
-            Clients
-          </button>
-          <button className="py-2 px-4 font-semibold text-gray-700 hover:text-blue-700">
-            Profile
-          </button>
-        </div>
-      )}
 
       <main className="max-w-4xl mx-auto p-4">
         <Routes>
