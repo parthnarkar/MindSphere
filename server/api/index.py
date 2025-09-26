@@ -5,10 +5,7 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 from difflib import SequenceMatcher
-<<<<<<< HEAD
 from datetime import datetime, timedelta
-=======
->>>>>>> bcf35da (Add client fetching functionality to Counsellor Dashboard and implement MongoDB connection in API)
 from pymongo import MongoClient
 
 # Load API key
@@ -19,19 +16,36 @@ app = Flask(__name__)
 # Enable CORS for local dev (Vite on 5173/5174 -> Flask on 5000)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 
-# MongoDB client
-# Use safe defaults if env vars are missing
-MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+# MongoDB client - single, consolidated initialization
+# Read configuration from environment. If MONGO_URI is not set, the DB will remain unavailable
+MONGO_URI = os.getenv("MONGO_URI")
 MONGO_DB = os.getenv("MONGO_DB", "mindsphere")
-mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
-mongo_db = mongo_client[MONGO_DB]
-phq9_collection = mongo_db["phq9_responses"]
+mongo_client = None
+mongo_db = None
+phq9_collection = None
+clients_collection = None
 
-# Ensure helpful indexes (no-op if they already exist)
-try:
-    phq9_collection.create_index([("user_email", 1), ("timestamp", -1)], name="user_ts_desc")
-except Exception:
-    pass
+if MONGO_URI:
+	try:
+		mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+		# Prefer explicit DB name if provided, else use default database
+		mongo_db = mongo_client[MONGO_DB] if MONGO_DB else mongo_client.get_default_database()
+
+		# Collections
+		phq9_collection = mongo_db["phq9_responses"]
+		clients_collection = mongo_db["clients"]
+
+		# Ensure helpful indexes (no-op if they already exist)
+		try:
+			phq9_collection.create_index([("user_email", 1), ("timestamp", -1)], name="user_ts_desc")
+		except Exception:
+			pass
+		try:
+			clients_collection.create_index([("email", 1)], name="clients_email_idx")
+		except Exception:
+			pass
+	except Exception as e:
+		print("Warning: could not connect to MongoDB:", e)
 
 # In-memory prototype storage (replace with DB in production)
 bookings = []
@@ -43,17 +57,7 @@ resources = [
 	{"id": 3, "title": "Offline resource map", "type": "guide", "language": "Regional", "url": ""},
 ]
 
-# Optional MongoDB connection: if MONGO_URI is set in environment, use it.
-load_dotenv()
-MONGO_URI = os.getenv("MONGO_URI")
-mongo_client = None
-mongo_db = None
-if MONGO_URI:
-	try:
-		mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=2000)
-		mongo_db = mongo_client.get_default_database()
-	except Exception as e:
-		print("Warning: could not connect to MongoDB:", e)
+# ...existing code...
 
 """Safety-focused student mental health chatbot.
 
@@ -308,7 +312,6 @@ def api_admin():
 	return jsonify(metrics)
 
 
-<<<<<<< HEAD
 # ----------------------------- PHQ-9 Endpoints -----------------------------
 
 def _serialize_phq9(doc):
@@ -324,86 +327,186 @@ def _serialize_phq9(doc):
 
 @app.route("/api/phq9", methods=["POST", "OPTIONS"])
 def phq9_post():
-    try:
-        if request.method == "OPTIONS":
-            return "", 204
+	"""Accept a PHQ-9 submission and store it in MongoDB.
 
-        data = request.get_json() or {}
-        user_email = data.get("user_email")
-        answers = data.get("answers")
-        if not user_email or not isinstance(answers, list) or len(answers) != 9:
-            return jsonify({"error": "user_email and answers[9] are required"}), 400
-        try:
-            answers_int = [int(x) for x in answers]
-        except Exception:
-            return jsonify({"error": "answers must be integers"}), 400
-        if len(answers_int) != 9:
-            return jsonify({"error": "answers must be length 9"}), 400
-        if any((x is None) or (x < 0) or (x > 3) for x in answers_int):
-            return jsonify({"error": "answers must be integers 0-3"}), 400
+	Expected JSON: { user_email: str, answers: [int x9] }
+	Returns 201 with saved object, or 503 if DB not configured.
+	"""
+	try:
+		if request.method == "OPTIONS":
+			return "", 204
 
-        total_score = sum(answers_int)
-        now = datetime.utcnow()
+		# Ensure DB available
+		if phq9_collection is None:
+			return jsonify({"error": "MongoDB not configured or unavailable"}), 503
 
-        doc = {
-            "user_email": user_email.lower(),
-            "timestamp": now,
-            "answers": answers_int,
-            "total_score": total_score,
-        }
+		data = request.get_json() or {}
+		user_email = data.get("user_email")
+		answers = data.get("answers")
+		if not user_email or not isinstance(answers, list) or len(answers) != 9:
+			return jsonify({"error": "user_email and answers[9] are required"}), 400
 
-        # Optional: upsert if last record is within minutes to avoid duplicates from double clicks
-        last = phq9_collection.find_one({"user_email": doc["user_email"]}, sort=[("timestamp", -1)])
-        if last and isinstance(last.get("timestamp"), datetime) and (now - last["timestamp"]).total_seconds() < 60:
-            phq9_collection.update_one({"_id": last["_id"]}, {"$set": doc})
-            saved = phq9_collection.find_one({"_id": last["_id"]})
-            return jsonify(_serialize_phq9(saved)), 200
+		try:
+			answers_int = [int(x) for x in answers]
+		except Exception:
+			return jsonify({"error": "answers must be integers"}), 400
 
-        phq9_collection.insert_one(doc)
-        return jsonify(_serialize_phq9(doc)), 201
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+		if any((x is None) or (x < 0) or (x > 3) for x in answers_int):
+			return jsonify({"error": "answers must be integers 0-3"}), 400
+
+		total_score = sum(answers_int)
+		now = datetime.utcnow()
+
+		doc = {
+			"user_email": user_email.lower(),
+			"timestamp": now,
+			"answers": answers_int,
+			"total_score": total_score,
+		}
+
+		# Optional: upsert if last record is within 60 seconds to avoid duplicates
+		last = phq9_collection.find_one({"user_email": doc["user_email"]}, sort=[("timestamp", -1)])
+		if last and isinstance(last.get("timestamp"), datetime) and (now - last["timestamp"]).total_seconds() < 60:
+			phq9_collection.update_one({"_id": last["_id"]}, {"$set": doc})
+			saved = phq9_collection.find_one({"_id": last["_id"]})
+			return jsonify(_serialize_phq9(saved)), 200
+
+		phq9_collection.insert_one(doc)
+		return jsonify(_serialize_phq9(doc)), 201
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/phq9/<email>", methods=["GET", "OPTIONS"])
 def phq9_get_latest(email: str):
-    try:
-        if request.method == "OPTIONS":
-            return "", 204
-        # Defensive: verify DB connection
-        mongo_client.admin.command('ping')
-        doc = phq9_collection.find_one({"user_email": email.lower()}, sort=[("timestamp", -1)])
-        if not doc:
-            return jsonify({}), 200
-        return jsonify(_serialize_phq9(doc)), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-=======
-@app.route("/api/clients", methods=["GET"])
+	"""Return the latest PHQ-9 submission for the given email."""
+	try:
+		if request.method == "OPTIONS":
+			return "", 204
+
+		if phq9_collection is None or mongo_client is None:
+			return jsonify({"error": "MongoDB not configured or unavailable"}), 503
+
+		try:
+			mongo_client.admin.command('ping')
+		except Exception:
+			return jsonify({"error": "MongoDB not reachable"}), 503
+
+		doc = phq9_collection.find_one({"user_email": email.lower()}, sort=[("timestamp", -1)])
+		if not doc:
+			return jsonify({}), 200
+		return jsonify(_serialize_phq9(doc)), 200
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+def _phq9_severity(total_score: int) -> str:
+	"""Return PHQ-9 severity label for a numeric total score."""
+	try:
+		s = int(total_score)
+	except Exception:
+		return "unknown"
+	if s >= 20:
+		return "severe"
+	if s >= 15:
+		return "moderately severe"
+	if s >= 10:
+		return "moderate"
+	if s >= 5:
+		return "mild"
+	return "minimal"
+
+
+@app.route("/api/phq9-results", methods=["GET"])
+def phq9_results():
+	"""Return a list of recent PHQ-9 submissions (normalized) for dashboard consumption.
+
+	Optional query params:
+	  - email (string): filter by user_email
+	  - limit (int): number of records to return (default 200)
+	"""
+	try:
+		# parse query params
+		email = request.args.get("email")
+		try:
+			limit = min(1000, int(request.args.get("limit", 200)))
+		except Exception:
+			limit = 200
+
+		q = {}
+		if email:
+			q["user_email"] = email.lower()
+
+		if phq9_collection is None:
+			return jsonify({"error": "MongoDB not configured or unavailable"}), 503
+
+		cursor = phq9_collection.find(q).sort([("timestamp", -1)]).limit(limit)
+		results = []
+		for doc in cursor:
+			ts = doc.get("timestamp")
+			ts_iso = ts.isoformat() if isinstance(ts, datetime) else str(ts)
+			total = doc.get("total_score") or doc.get("totalScore") or doc.get("total") or 0
+			item = {
+				"user_email": doc.get("user_email"),
+				"timestamp": ts_iso,
+				"answers": doc.get("answers", []),
+				"totalScore": int(total),
+				"severity": _phq9_severity(total),
+			}
+			results.append(item)
+
+		return jsonify({"results": results}), 200
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/clients", methods=["GET", "POST"])
 def api_clients():
 	"""Return client-submitted form entries. If MongoDB is configured (MONGO_URI), read from 'clients' collection."""
 	try:
-		# If a mongo_db is available, read the documents
-		if 'mongo_db' in globals() and mongo_db:
-			coll = mongo_db.get_collection('clients')
-			docs = list(coll.find().sort([('createdAt', -1)]).limit(200))
-			for d in docs:
-				d['id'] = str(d.get('_id'))
-				if '_id' in d:
-					del d['_id']
-				if 'createdAt' in d:
-					try:
-						d['createdAt'] = d['createdAt'].isoformat()
-					except Exception:
-						d['createdAt'] = str(d['createdAt'])
-			return jsonify({'clients': docs})
+		# If a mongo_db is available, read or write documents
+		if clients_collection is None:
+			return jsonify({'error': 'MongoDB not configured or unavailable'}), 503
 
-		# Fallback sample
-		sample = [{ 'id': 'sample-1', 'name': 'Student A', 'email': 'a@example.edu', 'submittedAt': '2025-01-01T10:00:00' }]
-		return jsonify({'clients': sample})
+		if request.method == 'POST':
+			data = request.get_json() or {}
+			# Basic validation
+			name = data.get('name') or data.get('fullName') or data.get('full_name')
+			email = data.get('email')
+			if not email:
+				return jsonify({'error': 'email is required'}), 400
+			entry = {
+				'name': name or 'Anonymous',
+				'email': email.lower(),
+				'phone': data.get('phone') or data.get('contact'),
+				'details': data.get('details') or data.get('message') or data.get('description'),
+				'createdAt': datetime.utcnow(),
+			}
+			res = clients_collection.insert_one(entry)
+			entry['id'] = str(res.inserted_id)
+			# Convert createdAt to isoformat
+			entry['createdAt'] = entry['createdAt'].isoformat()
+			return jsonify({'client': entry}), 201
+
+		# GET: return recent clients
+		docs = list(clients_collection.find().sort([('createdAt', -1)]).limit(200))
+		for d in docs:
+			d['id'] = str(d.get('_id'))
+			if '_id' in d:
+				del d['_id']
+			if 'createdAt' in d:
+				try:
+					d['createdAt'] = d['createdAt'].isoformat()
+				except Exception:
+					d['createdAt'] = str(d['createdAt'])
+		return jsonify({'clients': docs})
+
+		# If MongoDB is not configured or unavailable, return a clear error status
+		return jsonify({'error': 'MongoDB not configured or unavailable'}), 503
 	except Exception as e:
 		return jsonify({'error': str(e)}), 500
->>>>>>> bcf35da (Add client fetching functionality to Counsellor Dashboard and implement MongoDB connection in API)
+
+
 
 
 @app.route("/api/chat", methods=["POST", "OPTIONS"])

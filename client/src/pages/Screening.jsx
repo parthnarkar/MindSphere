@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API } from "../hooks/helper";
+import PHQ9Modal from "../components/PHQ9Modal";
 
 const samplePHQ = [
   "Little interest or pleasure in doing things",
@@ -25,11 +26,13 @@ function ScreeningQuestion({ q, idx, onChange, value }) {
   );
 }
 
-export default function Screening() {
+export default function Screening({ user }) {
   const [answers, setAnswers] = useState(Array(samplePHQ.length).fill(0));
   const [score, setScore] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
+  const [showPhq9, setShowPhq9] = useState(false);
+  const [phq9Checked, setPhq9Checked] = useState(false);
 
   function setAnswer(i, val) {
     const next = [...answers];
@@ -59,9 +62,47 @@ export default function Screening() {
       .finally(() => setLoading(false));
   }
 
+  // On mount, show PHQ-9 modal if no submission in last 7 days
+  useEffect(() => {
+    const checkPhq9 = async () => {
+      if (!user || phq9Checked || user.role === "counsellor") return;
+      try {
+        const base = API || "http://localhost:5000";
+        const url = `${base.replace(/\/$/, "")}/api/phq9/${encodeURIComponent(user.email)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("phq9 fetch failed");
+        const data = await res.json();
+        if (data && data.timestamp) {
+          const ts = new Date(data.timestamp);
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          if (ts >= sevenDaysAgo) {
+            setShowPhq9(false);
+          } else {
+            setShowPhq9(true);
+          }
+        } else {
+          setShowPhq9(true);
+        }
+      } catch (_) {
+        setShowPhq9(true);
+      } finally {
+        setPhq9Checked(true);
+      }
+    };
+    checkPhq9();
+  }, [user, phq9Checked]);
+
   return (
     <div className="bg-beige min-h-screen px-4 py-8 font-sans">
       <div className="max-w-2xl mx-auto">
+        {user && user.role !== "counsellor" && showPhq9 && (
+          <PHQ9Modal
+            user={user}
+            open={showPhq9}
+            onClose={() => setShowPhq9(false)}
+            onSubmitted={() => setShowPhq9(false)}
+          />
+        )}
         <h2 className="text-3xl font-bold text-deep-blue mb-2">Screening Tools (PHQ-9 prototype)</h2>
         <p className="text-deep-blue text-opacity-75 mb-8">This is a prototype demo of screening. Scores are illustrative only.</p>
 

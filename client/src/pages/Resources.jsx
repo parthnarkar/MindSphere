@@ -153,176 +153,209 @@ export default function Resources() {
   };
 
   return (
-    <div>
-      <div className="max-w-5xl mx-auto p-4">
-        <h1 className="text-3xl font-bold text-center mb-4">Resource Finder</h1>
-
-        <form onSubmit={onSubmit} className="flex items-center gap-2 mb-4">
-          <input
-            className="flex-1 border rounded px-4 py-2 shadow-sm"
-            placeholder="Search videos, articles, books, e.g. 'coping with anxiety'"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            aria-label="Search resources"
-          />
-          <button
-            type="submit"
-            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-          >
-            Search
-          </button>
-        </form>
-
-        <div className="mb-4 flex flex-wrap gap-2 items-center">
-          <div className="text-sm text-gray-500 mr-2">Try:</div>
-          {suggestions.map((s) => (
-            <button
-              key={s}
-              onClick={() => setQuery(s)}
-              className="text-sm px-3 py-1 rounded bg-gray-100 hover:bg-gray-200"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <section className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <h2 className="text-xl font-semibold">YouTube Videos</h2>
-                {!YT_KEY && <span className="text-sm text-yellow-600">YouTube API key not set</span>}
+    <div className="min-h-screen bg-gray-50 py-8">
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+          <div className="p-6 sm:p-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Resource Finder</h1>
+                <p className="mt-1 text-sm text-gray-500">Search videos, articles, books and local support resources.</p>
               </div>
 
-              <div className="bg-white p-4 rounded shadow">
-                {loading && <div className="text-sm text-gray-600">Searching...</div>}
-                {error && <div className="text-sm text-red-600">{error}</div>}
+              <form onSubmit={onSubmit} className="w-full sm:w-1/2">
+                <label htmlFor="resource-search" className="sr-only">Search resources</label>
+                <div className="relative">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
+                  </span>
+                  <input
+                    id="resource-search"
+                    className="w-full pl-10 pr-28 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                    placeholder="e.g. coping with anxiety"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    aria-label="Search resources"
+                  />
+                  <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
+                    {query && (
+                      <button type="button" onClick={() => setQuery("")} className="text-sm px-2 py-1 rounded-md text-gray-600 hover:bg-gray-100">Clear</button>
+                    )}
+                    <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded-md hover:bg-blue-700">Search</button>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => setQuery(s)}
+                      className="text-xs md:text-sm px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </form>
+            </div>
+          </div>
 
-                {!YT_KEY ? (
-                  <div className="text-sm text-gray-600">Set <code>VITE_YT_API_KEY</code> in <code>client/.env</code> to enable YouTube search.</div>
-                ) : ytResults.length === 0 && !loading ? (
-                  <div className="text-sm text-gray-500">No videos found — try a different query.</div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {ytResults.map((v) => (
-                      <div key={v.id} className="flex gap-3 p-2 rounded border">
-                        {v.thumbnail ? (
-                          <img src={v.thumbnail} alt="thumb" className="w-28 h-20 object-cover rounded" />
-                        ) : (
-                          <div className="w-28 h-20 bg-gray-100 rounded" />
-                        )}
-                        <div className="flex-1">
-                          <div className="font-medium">{v.title}</div>
-                          <div className="text-xs text-gray-600">{v.channel}</div>
-                          <div className="mt-2">
-                            <a
-                              className="text-sm text-blue-600 hover:underline"
-                              href={`https://www.youtube.com/watch?v=${v.id}`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              Watch on YouTube
-                            </a>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 sm:p-8 bg-gray-50">
+            <main className="lg:col-span-2 space-y-6">
+              <section>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-semibold text-gray-800">YouTube Videos</h2>
+                  <div className="text-sm text-gray-500">{!YT_KEY ? <span className="text-yellow-600">YouTube API key not set</span> : `${ytResults.length} results`}</div>
+                </div>
+
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  {loading && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="flex gap-3 p-3 border rounded animate-pulse">
+                          <div className="w-28 h-20 bg-gray-200 rounded" />
+                          <div className="flex-1 space-y-2 py-1">
+                            <div className="h-4 bg-gray-200 rounded w-3/4" />
+                            <div className="h-3 bg-gray-200 rounded w-1/2" />
                           </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </section>
+                      ))}
+                    </div>
+                  )}
 
-            <section className="mb-6">
-              <h2 className="text-xl font-semibold mb-2">Wikipedia Articles</h2>
-              <div className="bg-white p-4 rounded shadow">
-                {wikiResults.length === 0 ? (
-                  <div className="text-sm text-gray-500">No articles found.</div>
+                  {!loading && error && <div className="text-sm text-red-600">{error}</div>}
+
+                  {!loading && !YT_KEY && (
+                    <div className="text-sm text-gray-600">Set <code>VITE_YT_API_KEY</code> in <code>client/.env</code> to enable YouTube search.</div>
+                  )}
+
+                  {!loading && YT_KEY && ytResults.length === 0 && (
+                    <div className="text-sm text-gray-500">No videos found — try a different query.</div>
+                  )}
+
+                  {!loading && ytResults.length > 0 && (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {ytResults.map((v) => (
+                        <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer" className="flex gap-3 p-3 rounded-lg border hover:shadow-md hover:bg-white transition bg-white">
+                          <div className="relative w-28 h-20 flex-shrink-0">
+                            {v.thumbnail ? (
+                              <img src={v.thumbnail} alt="thumb" className="w-full h-full object-cover rounded" />
+                            ) : (
+                              <div className="w-full h-full bg-gray-100 rounded" />
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="bg-black bg-opacity-30 rounded-full p-2">
+                                <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="font-medium text-gray-900 line-clamp-2">{v.title}</div>
+                            <div className="text-xs text-gray-500 mt-1">{v.channel}</div>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-lg font-semibold text-gray-800 mb-3">Wikipedia Articles</h2>
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  {wikiResults.length === 0 ? (
+                    <div className="text-sm text-gray-500">No articles found.</div>
+                  ) : (
+                    <ul className="space-y-3">
+                      {wikiResults.map((w) => (
+                        <li key={w.id} className="p-3 rounded border hover:bg-gray-50">
+                          <a href={w.url} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">
+                            {w.title}
+                          </a>
+                          <div className="text-sm text-gray-700 mt-1" dangerouslySetInnerHTML={{ __html: w.snippet }} />
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </section>
+
+              <section>
+                <h2 className="text-lg font-semibold text-gray-800 mb-3">Books (OpenLibrary)</h2>
+                <div className="bg-white p-4 rounded-lg shadow-sm">
+                  {bookResults.length === 0 ? (
+                    <div className="text-sm text-gray-500">No books found.</div>
+                  ) : (
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {bookResults.map((b) => (
+                        <div key={b.id} className="flex gap-3 items-start border p-3 rounded hover:shadow-sm bg-white">
+                          {b.cover ? (
+                            <img src={b.cover} className="w-20 h-28 object-cover rounded" alt={b.title} />
+                          ) : (
+                            <div className="w-20 h-28 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500">No cover</div>
+                          )}
+                          <div>
+                            <div className="font-medium text-gray-900">{b.title}</div>
+                            <div className="text-sm text-gray-600">{b.author}</div>
+                            <div className="text-xs text-gray-500">{b.year}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </section>
+            </main>
+
+            <aside className="space-y-6">
+              <div className="bg-white p-4 rounded-lg shadow-sm">
+                <h3 className="font-semibold mb-3">Local Resources</h3>
+                {localResources.length === 0 ? (
+                  <div className="text-sm text-gray-500">No local resources found for this query. Showing fallbacks.</div>
                 ) : (
                   <ul className="space-y-3">
-                    {wikiResults.map((w) => (
-                      <li key={w.id} className="border p-3 rounded">
-                        <a href={w.url} target="_blank" rel="noreferrer" className="font-medium text-blue-600">
-                          {w.title}
-                        </a>
-                        <div className="text-sm text-gray-700 mt-1" dangerouslySetInnerHTML={{ __html: w.snippet }} />
+                    {localResources.map((r) => (
+                      <li key={r.id} className="text-sm border p-3 rounded hover:bg-gray-50">
+                        <div className="font-medium text-gray-900">{r.title}</div>
+                        <div className="text-xs text-gray-600">{r.type} — {r.language}</div>
+                        {r.url && (
+                          <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block">Open</a>
+                        )}
                       </li>
                     ))}
                   </ul>
                 )}
-              </div>
-            </section>
 
-            <section>
-              <h2 className="text-xl font-semibold mb-2">Books (OpenLibrary)</h2>
-              <div className="bg-white p-4 rounded shadow">
-                {bookResults.length === 0 ? (
-                  <div className="text-sm text-gray-500">No books found.</div>
-                ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {bookResults.map((b) => (
-                      <div key={b.id} className="flex gap-3 items-center border p-2 rounded">
-                        {b.cover ? <img src={b.cover} className="w-20 h-28 object-cover rounded" alt={b.title} /> : <div className="w-20 h-28 bg-gray-100 rounded" />}
-                        <div>
-                          <div className="font-medium">{b.title}</div>
-                          <div className="text-sm text-gray-600">{b.author}</div>
-                          <div className="text-xs text-gray-500">{b.year}</div>
-                        </div>
+                {localResources.length === 0 && (
+                  <div className="mt-3 space-y-2">
+                    {FALLBACK.map((f) => (
+                      <div key={f.id} className="border p-3 rounded bg-gray-50">
+                        <div className="font-medium">{f.title}</div>
+                        <div className="text-xs text-gray-600">{f.type}</div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-            </section>
-          </div>
 
-          <aside className="space-y-6">
-            <div className="bg-white p-4 rounded shadow">
-              <h3 className="font-semibold mb-2">Local Resources</h3>
-              {localResources.length === 0 ? (
-                <div className="text-sm text-gray-500">No local resources found for this query. Showing fallbacks.</div>
-              ) : (
-                <ul className="space-y-2">
-                  {localResources.map((r) => (
-                    <li key={r.id} className="text-sm">
-                      <div className="font-medium">{r.title}</div>
-                      <div className="text-xs text-gray-600">{r.type} — {r.language}</div>
-                    </li>
-                  ))}
+              <div className="bg-white p-4 rounded-lg shadow-sm">
+                <h3 className="font-semibold mb-3">Crisis & Helplines</h3>
+                <ul className="text-sm space-y-2">
+                  <li>
+                    <div className="font-medium">Crisis Text Line</div>
+                    <div className="text-xs text-gray-600">Text HOME to 741741</div>
+                  </li>
+                  <li>
+                    <div className="font-medium">National Suicide Prevention Lifeline</div>
+                    <div className="text-xs text-gray-600">988</div>
+                  </li>
+                  <li>
+                    <div className="font-medium">Campus Counseling</div>
+                    <div className="text-xs text-gray-600">(555) 123-4567</div>
+                  </li>
                 </ul>
-              )}
-
-              {localResources.length === 0 && (
-                <div className="mt-3">
-                  {FALLBACK.map((f) => (
-                    <div key={f.id} className="border p-2 rounded mb-2">
-                      <div className="font-medium">{f.title}</div>
-                      <div className="text-xs text-gray-600">{f.type}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            
-            </div>
-
-            <div className="bg-white p-4 rounded shadow">
-              <h3 className="font-semibold mb-2">Crisis & Helplines</h3>
-              <ul className="text-sm space-y-2">
-                <li>
-                  <div className="font-medium">Crisis Text Line</div>
-                  <div className="text-xs text-gray-600">Text HOME to 741741</div>
-                </li>
-                <li>
-                  <div className="font-medium">National Suicide Prevention Lifeline</div>
-                  <div className="text-xs text-gray-600">988</div>
-                </li>
-                <li>
-                  <div className="font-medium">Campus Counseling</div>
-                  <div className="text-xs text-gray-600">(555) 123-4567</div>
-                </li>
-              </ul>
-            </div>
-
-          </aside>
+              </div>
+            </aside>
+          </div>
         </div>
       </div>
     </div>
