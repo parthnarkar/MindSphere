@@ -26,9 +26,13 @@ function App() {
     const unsubscribe = onAuthChange((currentUser) => {
       setUser(currentUser);
       setLoading(false);
-      // Show immediately after login; will auto-close if recent submission exists
+      // Show immediately after login for non-counsellor; will auto-close if recent submission exists
       if (currentUser) {
-        setShowPhq9(true);
+        if (currentUser.role !== "counsellor") {
+          setShowPhq9(true);
+        } else {
+          setShowPhq9(false);
+        }
         setPhq9Checked(false);
       } else {
         setShowPhq9(false);
@@ -41,7 +45,7 @@ function App() {
   // Check PHQ-9 last submission; show modal if none in last 7 days
   useEffect(() => {
     const checkPhq9 = async () => {
-      if (!user || phq9Checked) return;
+      if (!user || phq9Checked || user.role === "counsellor") return;
       try {
         const base = API || "http://localhost:5000";
         const url = `${base.replace(/\/$/, "")}/api/phq9/${encodeURIComponent(user.email)}`;
@@ -152,7 +156,7 @@ function App() {
       )}
 
       {/* PHQ-9 Modal */}
-      {user && showPhq9 && (
+      {user && user.role !== "counsellor" && showPhq9 && (
         <PHQ9Modal
           user={user}
           open={showPhq9}
