@@ -10,6 +10,8 @@ import Admin from "./pages/Admin";
 import PeerToPeer from "./pages/Peer-to-Peer";
 import CounsellorDashboard from "./pages/CounsellorDashboard";
 import { onAuthChange, logoutUser } from "./services/auth";
+import PHQ9Modal from "./components/PHQ9Modal";
+import { API } from "./hooks/helper";
 import { db } from "./firebase";
 import { collection, getDocs } from "firebase/firestore";
 
@@ -17,14 +19,58 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [counsellors, setCounsellors] = useState([]);
+  const [showPhq9, setShowPhq9] = useState(false);
+  const [phq9Checked, setPhq9Checked] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthChange((currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      // Show immediately after login; will auto-close if recent submission exists
+      if (currentUser) {
+        setShowPhq9(true);
+        setPhq9Checked(false);
+      } else {
+        setShowPhq9(false);
+        setPhq9Checked(false);
+      }
     });
     return () => unsubscribe();
   }, []);
+
+  // Check PHQ-9 last submission; show modal if none in last 7 days
+  useEffect(() => {
+    const checkPhq9 = async () => {
+      if (!user || phq9Checked) return;
+      try {
+        const base = API || "http://localhost:5000";
+        const url = `${base.replace(/\/$/, "")}/api/phq9/${encodeURIComponent(user.email)}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("phq9 fetch failed");
+        const data = await res.json();
+        if (data && data.timestamp) {
+          const ts = new Date(data.timestamp);
+          const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+          if (ts >= sevenDaysAgo) {
+            // Recent submission — close the modal
+            setShowPhq9(false);
+          } else {
+            // Older than 7 days — keep showing
+            setShowPhq9(true);
+          }
+        } else {
+          // No record — keep showing
+          setShowPhq9(true);
+        }
+      } catch (_) {
+        // On error, do not block; allow modal to show
+        setShowPhq9(true);
+      } finally {
+        setPhq9Checked(true);
+      }
+    };
+    checkPhq9();
+  }, [user, phq9Checked]);
 
   const handleLogout = async () => {
     await logoutUser();
@@ -103,6 +149,16 @@ function App() {
             </div>
           </div>
         </header>
+      )}
+
+      {/* PHQ-9 Modal */}
+      {user && showPhq9 && (
+        <PHQ9Modal
+          user={user}
+          open={showPhq9}
+          onClose={() => setShowPhq9(false)}
+          onSubmitted={() => setShowPhq9(false)}
+        />
       )}
 
       {/* Counsellor Tabs */}

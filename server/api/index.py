@@ -5,6 +5,8 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 from difflib import SequenceMatcher
+from datetime import datetime, timedelta
+from pymongo import MongoClient
 
 # Load API key
 load_dotenv()
@@ -12,7 +14,21 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 app = Flask(__name__)
 # Enable CORS for local dev (Vite on 5173/5174 -> Flask on 5000)
-CORS(app, resources={r"/*": {"origins": ["http://localhost:5173", "http://localhost:5174", "http://127.0.0.1:5173", "http://127.0.0.1:5174"]}}, supports_credentials=False)
+CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
+
+# MongoDB client
+# Use safe defaults if env vars are missing
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
+MONGO_DB = os.getenv("MONGO_DB", "mindsphere")
+mongo_client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+mongo_db = mongo_client[MONGO_DB]
+phq9_collection = mongo_db["phq9_responses"]
+
+# Ensure helpful indexes (no-op if they already exist)
+try:
+    phq9_collection.create_index([("user_email", 1), ("timestamp", -1)], name="user_ts_desc")
+except Exception:
+    pass
 
 # In-memory prototype storage (replace with DB in production)
 bookings = []
@@ -275,6 +291,77 @@ def api_admin():
 		"forumPosts": len(forum_posts),
 	}
 	return jsonify(metrics)
+
+
+# ----------------------------- PHQ-9 Endpoints -----------------------------
+
+def _serialize_phq9(doc):
+	if not doc:
+		return None
+	return {
+		"user_email": doc.get("user_email"),
+		"timestamp": doc.get("timestamp").isoformat() if isinstance(doc.get("timestamp"), datetime) else doc.get("timestamp"),
+		"answers": doc.get("answers", []),
+		"total_score": doc.get("total_score", 0),
+	}
+
+
+@app.route("/api/phq9", methods=["POST", "OPTIONS"])
+def phq9_post():
+    try:
+        if request.method == "OPTIONS":
+            return "", 204
+
+        data = request.get_json() or {}
+        user_email = data.get("user_email")
+        answers = data.get("answers")
+        if not user_email or not isinstance(answers, list) or len(answers) != 9:
+            return jsonify({"error": "user_email and answers[9] are required"}), 400
+        try:
+            answers_int = [int(x) for x in answers]
+        except Exception:
+            return jsonify({"error": "answers must be integers"}), 400
+        if len(answers_int) != 9:
+            return jsonify({"error": "answers must be length 9"}), 400
+        if any((x is None) or (x < 0) or (x > 3) for x in answers_int):
+            return jsonify({"error": "answers must be integers 0-3"}), 400
+
+        total_score = sum(answers_int)
+        now = datetime.utcnow()
+
+        doc = {
+            "user_email": user_email.lower(),
+            "timestamp": now,
+            "answers": answers_int,
+            "total_score": total_score,
+        }
+
+        # Optional: upsert if last record is within minutes to avoid duplicates from double clicks
+        last = phq9_collection.find_one({"user_email": doc["user_email"]}, sort=[("timestamp", -1)])
+        if last and isinstance(last.get("timestamp"), datetime) and (now - last["timestamp"]).total_seconds() < 60:
+            phq9_collection.update_one({"_id": last["_id"]}, {"$set": doc})
+            saved = phq9_collection.find_one({"_id": last["_id"]})
+            return jsonify(_serialize_phq9(saved)), 200
+
+        phq9_collection.insert_one(doc)
+        return jsonify(_serialize_phq9(doc)), 201
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/phq9/<email>", methods=["GET", "OPTIONS"])
+def phq9_get_latest(email: str):
+    try:
+        if request.method == "OPTIONS":
+            return "", 204
+        # Defensive: verify DB connection
+        mongo_client.admin.command('ping')
+        doc = phq9_collection.find_one({"user_email": email.lower()}, sort=[("timestamp", -1)])
+        if not doc:
+            return jsonify({}), 200
+        return jsonify(_serialize_phq9(doc)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/chat", methods=["POST", "OPTIONS"])
