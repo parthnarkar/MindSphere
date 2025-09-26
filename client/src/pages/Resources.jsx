@@ -13,24 +13,35 @@ export default function Resources() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const base = API || "http://localhost:5000";
-    const url = `${base.replace(/\/$/, "")}/api/resources`;
-
-    fetch(url)
-      .then((r) => {
+    const tryPrimary = () => {
+      const primary = `http://localhost:5001/resources`;
+      return fetch(primary).then((r) => {
         if (!r.ok) throw new Error(`Status ${r.status}`);
         return r.json();
-      })
-      .then((data) => {
-        // Expecting data.resources or an array response
-        const list = data?.resources ?? data ?? [];
+      });
+    };
+
+    const tryFallback = () => {
+      const base = API || "http://localhost:5000";
+      const url = `${base.replace(/\/$/, "")}/api/resources`;
+      return fetch(url).then((r) => {
+        if (!r.ok) throw new Error(`Status ${r.status}`);
+        return r.json();
+      });
+    };
+
+    (async () => {
+      try {
+        const data = await tryPrimary().catch(() => tryFallback());
+        const list = Array.isArray(data) ? data : (data?.resources ?? []);
         setItems(Array.isArray(list) ? list : []);
-      })
-      .catch((err) => {
+      } catch (err) {
         setError(err.message || "Failed to fetch");
         setItems(FALLBACK);
-      })
-      .finally(() => setLoading(false));
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, []);
 
   return (
