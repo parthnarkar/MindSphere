@@ -5,36 +5,66 @@ import {
   signOut,
   onAuthStateChanged
 } from "firebase/auth";
-import { doc ,setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 
-// ✅ Login user
-export const loginUser = (email, password) => {
-  return signInWithEmailAndPassword(auth, email, password);
+// Login user and get role
+export const loginUser = async (email, password) => {
+  const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  const user = userCredential.user;
+  // Fetch role from Firestore
+  const userDoc = await getDoc(doc(db, "users", user.uid));
+  const role = userDoc.exists() ? userDoc.data().role : "user";
+  return { user, role };
 };
 
-// ✅ Register new user
-export const registerUser = async (email, password) => {
-  //Create user in Firebase Auth
+// Register new user with role
+export const registerUser = async (email, password, role = "user", extra = {}) => {
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
-
-  //Save user info in Firestore
   await setDoc(doc(db, "users", user.uid), {
     email: user.email,
     createdAt: new Date(),
-    role: "user"
+    role,
+    ...extra
   });
-
+  // Save counsellor details in a separate collection
+  if (role === "counsellor") {
+    await setDoc(doc(db, "counsellors", user.uid), {
+      name: extra.name,
+      specialization: extra.specialization,
+      email: user.email,
+      createdAt: new Date(),
+    });
+  }
   return userCredential;
 };
 
+// export const login = async (email, password) => {
+//   const { user, role } = await loginUser(email, password);
+//   if (role === "counsellor") {
+//     navigate("/counsellor-dashboard");
+//   } else {
+//     navigate("/user-dashboard");
+//   }
+// };
 
-// ✅ Logout user
+// Logout user
 export const logoutUser = () => {
   return signOut(auth);
 };
 
-// ✅ Listen for auth state changes
+// Listen for auth state changes
 export const onAuthChange = (callback) => {
-  return onAuthStateChanged(auth, callback);
+  return onAuthStateChanged(auth, async (currentUser) => {
+    if (currentUser) {
+      // Fetch role from Firestore
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      const role = userDoc.exists() ? userDoc.data().role : "user";
+      // Add role to user object
+      const userWithRole = { ...currentUser, role };
+      callback(userWithRole);
+    } else {
+      callback(null);
+    }
+  });
 };

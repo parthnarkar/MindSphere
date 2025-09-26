@@ -12,7 +12,7 @@ export default function Chatbot() {
     setMessages((m) => [...m, user]);
     setInput("");
 
-    const url = "http://localhost:5000/chat";
+    const url = "http://localhost:5000/api/chat";
 
     // show typing indicator
     setMessages((m) => [...m, { from: "bot", text: "..." }]);
