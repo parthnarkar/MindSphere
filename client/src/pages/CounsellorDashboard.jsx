@@ -167,8 +167,8 @@ const CounsellorDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
-      <h1 className="text-3xl font-extrabold text-blue-700 mb-6">Counsellor Dashboard</h1>
+    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
+      <h1 className="text-2xl sm:text-3xl font-extrabold text-blue-700 mb-6">Counsellor Dashboard</h1>
 
       {/* Profile Form Modal */}
       {showProfileForm && (
@@ -182,18 +182,18 @@ const CounsellorDashboard = () => {
       {/* Counsellor Info */}
       {counsellor && (
         <div className="bg-white shadow-lg rounded-2xl p-6 mb-10">
-          <div className="flex flex-col md:flex-row items-start gap-6">
-            {counsellor.image && (
-              <img
-                src={counsellor.image}
-                alt={counsellor.name}
-                className="w-32 h-32 rounded-full border-2 border-blue-100 object-cover"
-              />
-            )}
+            <div className="flex flex-col md:flex-row items-start gap-6">
+              {counsellor.image && (
+                <img
+                  src={counsellor.image}
+                  alt={counsellor.name}
+                  className="w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-2 border-blue-100 object-cover"
+                />
+              )}
             <div className="flex-1">
               <h2 className="text-2xl font-bold text-gray-800 mb-4">{counsellor.name}</h2>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 text-sm">
                 <div>
                   <p className="text-gray-600 mb-2"><span className="font-medium">Specialization:</span> {counsellor.specialization}</p>
                   <p className="text-gray-600 mb-2"><span className="font-medium">📧 Email:</span> {counsellor.email}</p>
@@ -249,19 +249,16 @@ const CounsellorDashboard = () => {
         {appointments.length === 0 ? (
           <p className="text-gray-500 text-center py-10 text-lg">No booked appointments yet.</p>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {appointments.map((appt) => (
-              <div
-                key={appt.id}
-                className="bg-white shadow-lg rounded-2xl p-5 hover:shadow-2xl transition duration-300"
-              >
+              <div key={appt.id} className="bg-white shadow-lg rounded-2xl p-4 sm:p-5 hover:shadow-2xl transition duration-300 w-full">
                 <div className="flex justify-between items-center mb-3">
                   <h3 className="text-xl font-semibold text-gray-800">{appt.userName}</h3>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(appt.status)}`}>
                     {appt.status}
                   </span>
                 </div>
-                <div className="text-gray-600 text-sm space-y-1">
+                <div className="text-gray-600 text-sm space-y-1 break-words">
                   {appt.email && <p>📧 {appt.email}</p>}
                   {appt.contact && <p>📞 {appt.contact}</p>}
                   <p>⏰ {new Date(appt.time).toLocaleString()}</p>

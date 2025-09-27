@@ -56,7 +56,7 @@ export default function Chatbot() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-6">
+  <div className="max-w-5xl mx-auto px-4 sm:px-6 p-6">
       <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
         <div className="px-6 py-4 border-b">
           <h2 className="text-2xl font-semibold">Anonymous Chatbot</h2>
@@ -64,7 +64,7 @@ export default function Chatbot() {
         </div>
 
         <div className="md:flex">
-          <div className="flex-1 p-6">
+          <div className="flex-1 p-4 sm:p-6">
             <div ref={containerRef} className="h-[60vh] md:h-[56vh] overflow-y-auto space-y-4 bg-gray-50 p-4 rounded-lg border">
               {messages.map((m, i) => (
                 <div key={i} className={`flex items-start gap-3 ${m.from === "user" ? "justify-end" : "justify-start"}`}>
@@ -116,7 +116,7 @@ export default function Chatbot() {
             </div>
           </div>
 
-          <aside className="w-72 border-l hidden md:block">
+          <aside className="w-full md:w-72 border-t md:border-t-0 md:border-l mt-4 md:mt-0 md:block">
             <div className="p-6">
               <h3 className="font-semibold mb-3">Tips for a supportive chat</h3>
               <ul className="text-sm space-y-2 text-gray-600">

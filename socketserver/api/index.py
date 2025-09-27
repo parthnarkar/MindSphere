@@ -1,34 +1,59 @@
 # Flask + Flask-SocketIO version of the test-socket-server.js
-from flask import Flask, request, jsonify
-from flask_socketio import SocketIO, emit, join_room, leave_room
-from flask_cors import CORS
 import os
 import time
 
-# Prefer eventlet (or gevent) for real WebSocket support. If eventlet is available
-# we'll monkey-patch the stdlib so the server can handle sockets correctly.
+# Detect and enable an async backend (eventlet or gevent) before importing
+# socket-related libraries so monkey-patching takes effect early.
 async_mode = 'threading'
+use_eventlet = False
+use_gevent = False
 try:
     import eventlet  # type: ignore
     eventlet.monkey_patch()
     async_mode = 'eventlet'
+    use_eventlet = True
     print('Using eventlet for async_mode (better WebSocket support)')
 except Exception:
-    # eventlet not installed; fall back to threading. Threading works but the
-    # Werkzeug development server can behave poorly with native websockets.
-    print('eventlet not available; falling back to threading (development only)')
+    try:
+        from gevent import monkey  # type: ignore
+        monkey.patch_all()
+        async_mode = 'gevent'
+        use_gevent = True
+        print('Using gevent for async_mode (better WebSocket support)')
+    except Exception:
+        async_mode = 'threading'
+        print('No eventlet/gevent available; falling back to threading (development only)')
+
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit, join_room, leave_room
 
 app = Flask(__name__)
-# Allow all origins for production 
+
+# Configure allowed origins. Keep explicit hosts and also support wildcard where
+# required by the environment. Using '*' is fine for development but restrict in prod.
 ALLOWED_ORIGINS = [
-    "*", 
     "http://localhost:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:3000",
+    "*",
 ]
-# Apply Flask-CORS for regular HTTP endpoints (socket upgrades are handled by python-socketio)
-CORS(app, supports_credentials=True, origins=ALLOWED_ORIGINS)
-app.config['SECRET_KEY'] = 'secret!'
-# Enable engineio/socketio logging to help diagnose origin checks
-socketio = SocketIO(app, cors_allowed_origins=ALLOWED_ORIGINS, async_mode=async_mode, logger=True, engineio_logger=True)
+
+# Apply Flask-CORS for HTTP endpoints. Socket.IO will use its own CORS checks
+CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGINS}}, supports_credentials=True)
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'secret!')
+
+# Initialize SocketIO with explicit async_mode and logging useful for debugging
+socketio = SocketIO(
+    app,
+    async_mode=async_mode,
+    cors_allowed_origins=ALLOWED_ORIGINS,
+    logger=True,
+    engineio_logger=True,
+    ping_timeout=60,
+    ping_interval=25,
+)
 
 # Store connected users
 connected_users = {}
@@ -137,7 +162,8 @@ def handle_disconnect():
         emit('user_left', user.get('id'), broadcast=True, include_self=False)
 
 if __name__ == '__main__':
-    port = 3000
-    print(f'Server running on port {port}')
+    port = int(os.environ.get('PORT', 3000))
     print('WebSocket server ready for connections')
+    # If we're using the threading fallback on development servers, allow the
+    # unsafe werkzeug option to avoid socket upgrade issues during local testing.
     socketio.run(app, port=port)

@@ -22,7 +22,6 @@ bp = Blueprint('api', __name__)
 
 # In-memory fallbacks
 bookings = []
-forum_posts = []
 screenings = []
 resources = [{"id": 1, "title": "Intro to coping skills", "type": "video", "language": "English", "url": ""}]
 
@@ -193,18 +192,6 @@ def api_resources():
 	return jsonify({"resources": resources})
 
 
-@bp.route('/api/forum', methods=['GET', 'POST'])
-def api_forum():
-	if request.method == 'POST':
-		data = request.get_json() or {}
-		text = data.get('text')
-		if not text:
-			return jsonify({"error": "text required"}), 400
-		post = {"id": int(datetime.utcnow().timestamp() * 1000), "text": text, "anon": True}
-		forum_posts.insert(0, post)
-		return jsonify(post), 201
-	return jsonify({"posts": forum_posts})
-
 
 @bp.route('/api/screenings', methods=['GET', 'POST'])
 def api_screenings():
@@ -218,11 +205,6 @@ def api_screenings():
 		return jsonify({"ok": True}), 201
 	return jsonify({"screenings": screenings})
 
-
-@bp.route('/api/admin', methods=['GET'])
-def api_admin():
-	metrics = {"activeUsers": 124, "screenings": len(screenings), "bookings": len(bookings), "forumPosts": len(forum_posts)}
-	return jsonify(metrics)
 
 
 @bp.route('/api/clients', methods=['GET'])
@@ -337,4 +319,7 @@ app.register_blueprint(bp)
 if __name__ == '__main__':
 	dbutils.init_mongo()
 	modelutils.init_model()
-	app.run(port=int(os.getenv('PORT')), debug=True)
+	# Default to 5000 if PORT not set; bind to all interfaces for local testing
+	port = int(os.getenv('PORT') or 5000)
+	print(f"Starting REST API")
+	app.run(port=port, debug=True)

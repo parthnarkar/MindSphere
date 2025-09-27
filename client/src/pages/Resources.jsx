@@ -154,7 +154,7 @@ export default function Resources() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
           <div className="p-6 sm:p-8">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -163,7 +163,7 @@ export default function Resources() {
                 <p className="mt-1 text-sm text-gray-500">Search videos, articles, books and local support resources.</p>
               </div>
 
-              <form onSubmit={onSubmit} className="w-full sm:w-1/2">
+                <form onSubmit={onSubmit} className="w-full sm:w-1/2">
                 <label htmlFor="resource-search" className="sr-only">Search resources</label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
@@ -236,7 +236,7 @@ export default function Resources() {
                     <div className="grid gap-4 md:grid-cols-2">
                       {ytResults.map((v) => (
                         <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer" className="flex gap-3 p-3 rounded-lg border hover:shadow-md hover:bg-white transition bg-white">
-                          <div className="relative w-28 h-20 flex-shrink-0">
+                          <div className="relative w-24 sm:w-28 h-16 sm:h-20 flex-shrink-0">
                             {v.thumbnail ? (
                               <img src={v.thumbnail} alt="thumb" className="w-full h-full object-cover rounded" />
                             ) : (

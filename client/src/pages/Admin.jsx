@@ -8,12 +8,12 @@ export default function Admin() {
     fetch(`${API}/api/admin`).then((r) => r.json()).then(setMetrics);
   }, []);
 
-  if (!metrics) return <div>Loading metrics...</div>;
+  if (!metrics) return <div className="px-4 sm:px-6 py-6">Loading metrics...</div>;
 
   return (
-    <div>
+    <div className="px-4 sm:px-6">
       <h2 className="text-2xl font-semibold mb-4">Admin Dashboard (Anonymous)</h2>
-      <div className="grid grid-cols-2 gap-4 max-w-md">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl">
         <div className="bg-white p-4 rounded shadow">
           <div className="text-sm text-gray-500">Active users (anon)</div>
           <div className="text-2xl font-bold">{metrics.activeUsers}</div>
@@ -25,10 +25,6 @@ export default function Admin() {
         <div className="bg-white p-4 rounded shadow">
           <div className="text-sm text-gray-500">Bookings</div>
           <div className="text-2xl font-bold">{metrics.bookings}</div>
-        </div>
-        <div className="bg-white p-4 rounded shadow">
-          <div className="text-sm text-gray-500">Forum posts</div>
-          <div className="text-2xl font-bold">{metrics.forumPosts}</div>
         </div>
       </div>
 

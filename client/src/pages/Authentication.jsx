@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { loginUser, registerUser, logoutUser } from "../services/auth";
+import { db } from "../firebase";
+import { collection, query as q, where, getDocs } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import bgVideo from "../assets/Login.mp4";
 import logo from "../assets/mindsphere-logo.png";
@@ -19,6 +21,31 @@ const AuthPage = () => {
     e.preventDefault();
     setError("");
     try {
+      // Pre-check: try to find a users doc for this email to validate role before signing in.
+      // This avoids signing in then immediately signing out when roles don't match.
+      if (role) {
+        try {
+          const usersRef = collection(db, 'users');
+          const qq = q(usersRef, where('email', '==', email));
+          const snap = await getDocs(qq);
+          if (!snap.empty) {
+            // Use the first matched document
+            const data = snap.docs[0].data();
+            const foundRole = data.role;
+            if (foundRole && foundRole !== role) {
+              setError(`This email is registered as '${foundRole}'. Please sign in as '${foundRole}' or sign up as a '${role}'.`);
+              return;
+            }
+          } else {
+            // No users doc found: require signup first
+            setError(`No account found for this email. Please sign up as a ${role} first.`);
+            return;
+          }
+        } catch (preErr) {
+          // If Firestore lookup fails (security rules or network), fall back to sign-in and server-side check
+          console.warn('Pre-check failed, falling back to sign-in flow', preErr);
+        }
+      }
       const result = await loginUser(email, password);
       // Validate that the signed-in account matches the selected role
       const signedUp = result && result.signedUp;
@@ -34,7 +61,11 @@ const AuthPage = () => {
         }
         return;
       }
-      // Successful login - navigate to root which will redirect based on role
+      // Successful login - set firstLogin flag if applicable
+      if (result && result.firstLogin && role === 'user') {
+        try { sessionStorage.setItem('firstLogin', '1'); } catch(e) { /* ignore */ }
+      }
+      // Navigate to root which will redirect based on role
       navigate('/');
     } catch (err) {
       setError(err.message || "Login failed");

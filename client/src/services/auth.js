@@ -15,8 +15,22 @@ export const loginUser = async (email, password) => {
   const userDoc = await getDoc(doc(db, "users", user.uid));
   const signedUp = userDoc.exists();
   const role = signedUp ? userDoc.data().role : null;
-  // Return signedUp flag so callers can decide whether to prompt signup
-  return { user, role, signedUp };
+  // Determine firstLogin: true when user is signedUp but has no lastLogin recorded
+  let firstLogin = false;
+  try {
+    if (signedUp) {
+      const data = userDoc.data() || {};
+      firstLogin = !data.lastLogin;
+      // Update lastLogin timestamp so subsequent signins are not considered first-time
+      await setDoc(doc(db, 'users', user.uid), { lastLogin: new Date() }, { merge: true });
+    }
+  } catch (e) {
+    // If update fails, don't block sign-in; just leave firstLogin as detected
+    console.warn('loginUser: failed to update lastLogin', e);
+  }
+
+  // Return signedUp flag and firstLogin so callers can decide whether to show onboarding
+  return { user, role, signedUp, firstLogin };
 };
 
 // Register new user with role

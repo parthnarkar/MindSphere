@@ -116,9 +116,9 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
 
         {error && <div className="text-sm text-red-600 mt-3">{error}</div>}
 
-        <div className="mt-6 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 rounded border">Cancel</button>
-          <button onClick={submit} disabled={!allAnswered || submitting} className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60">
+        <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 rounded border w-full sm:w-auto">Cancel</button>
+          <button onClick={submit} disabled={!allAnswered || submitting} className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60 w-full sm:w-auto">
             {submitting ? "Submitting..." : "Submit"}
           </button>
         </div>

@@ -93,8 +93,8 @@ export default function Screening({ user }) {
   }, [user, phq9Checked]);
 
   return (
-    <div className="bg-beige min-h-screen px-4 py-8 font-sans">
-      <div className="max-w-2xl mx-auto">
+    <div className="bg-beige min-h-screen px-4 sm:px-6 py-8 font-sans">
+      <div className="max-w-2xl mx-auto px-2 sm:px-0">
         {user && user.role !== "counsellor" && showPhq9 && (
           <PHQ9Modal
             user={user}
@@ -106,7 +106,7 @@ export default function Screening({ user }) {
         <h2 className="text-3xl font-bold text-deep-blue mb-2">Screening Tools (PHQ-9 prototype)</h2>
         <p className="text-deep-blue text-opacity-75 mb-8">This is a prototype demo of screening. Scores are illustrative only.</p>
 
-        <div className="bg-white rounded-xl shadow-lg p-8">
+  <div className="bg-white rounded-xl shadow-lg p-6 sm:p-8">
           {samplePHQ.map((q, i) => (
             <ScreeningQuestion key={i} q={q} idx={i} onChange={setAnswer} value={answers[i]} />
           ))}

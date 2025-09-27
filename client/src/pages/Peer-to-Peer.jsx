@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import useSocket from '../hooks/useSocket';
-import { forumApi, utils } from '../hooks/forumApi';
+import utils from '../utils';
 
 // Mock user data - in real app, this would come from authentication
 const mockUser = {
@@ -227,11 +227,7 @@ const PeerToPeer = () => {
       setError(null);
 
       // Load categories (in production, fetch from API)
-      // const categoriesRes = await forumApi.getCategories();
       // setCategories(categoriesRes.data);
-
-      // Load posts (in production, fetch from API)
-      // const postsRes = await forumApi.getPosts(selectedCategory);
       // setPosts(postsRes.data);
 
       // Mock initial posts for demo
@@ -413,7 +409,6 @@ const PeerToPeer = () => {
       };
 
       // In production, call API
-      // const response = await forumApi.createPost(postData);
       // const createdPost = response.data;
 
       // Mock post creation for demo
@@ -466,10 +461,8 @@ const PeerToPeer = () => {
 
       // In production, call API
       if (replyId) {
-        // await forumApi.upvoteReply(postId, replyId);
         socketConnection.upvoteReply(postId, replyId);
       } else {
-        // await forumApi.upvotePost(postId);
         socketConnection.upvotePost(postId);
       }
     } catch (err) {
@@ -518,7 +511,6 @@ const PeerToPeer = () => {
       };
 
       // In production, call API
-      // const response = await forumApi.createReply(postId, replyData);
       // const createdReply = response.data;
 
       // Mock reply creation for demo
@@ -584,7 +576,6 @@ const PeerToPeer = () => {
       ));
 
       // In production, call API
-      // await forumApi.pinPost(postId);
       
       socketConnection.pinPost(postId);
     } catch (err) {
@@ -619,7 +610,6 @@ const PeerToPeer = () => {
       }));
 
       // In production, call API
-      // await forumApi.verifyReply(postId, replyId);
       
       socketConnection.verifyReply(postId, replyId);
     } catch (err) {
@@ -658,7 +648,6 @@ const PeerToPeer = () => {
       };
 
       // In production, call API
-      // await forumApi.reportContent(fullReportData);
       
       socketConnection.reportContent(fullReportData);
       
@@ -724,7 +713,7 @@ const PeerToPeer = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      <div className="max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header Section with Guidelines */}
         <div className="mb-8">
           <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-xl border border-white/20 p-8">
@@ -736,7 +725,7 @@ const PeerToPeer = () => {
                   </div>
                   <div>
                     <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                      Peer Support Forum
+                      Peer Support
                     </h1>
                     <p className="mt-1 text-calm-blue text-lg">
                       A safe space to connect and share with peers

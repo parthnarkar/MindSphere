@@ -4,7 +4,7 @@
 
 ## Overview
 
-MindSphere is a full-stack prototype designed to provide stigma-free, confidential, and supportive mental health resources for students. It combines an anonymous chatbot, peer-to-peer forum, screening tools, booking system for counselors, and a resource library. The system is built with a React + Vite frontend, Flask and Node.js backend APIs, and real-time communication via WebSockets.
+MindSphere is a full-stack prototype designed to provide stigma-free, confidential, and supportive mental health resources for students. It combines an anonymous chatbot, peer-to-peer Server, screening tools, booking system for counselors, and a resource library. The system is built with a React + Vite frontend, Flask and Node.js backend APIs, and real-time communication via WebSockets.
 
 ---
 
@@ -25,7 +25,7 @@ MindSphere is a full-stack prototype designed to provide stigma-free, confidenti
 - Option for anonymous booking.
 - Counselor dashboard to view appointments and client submissions.
 
-### 4. Peer-to-Peer Forum
+### 4. Peer-to-Peer Server
 - Anonymous, moderated discussion space for students.
 - Real-time posts, replies, upvotes, and moderation via WebSockets.
 - Crisis content detection and escalation.
@@ -35,7 +35,7 @@ MindSphere is a full-stack prototype designed to provide stigma-free, confidenti
 - Searchable and categorized for easy access.
 
 ### 6. Admin Dashboard
-- View anonymized metrics: active users, screenings, bookings, forum posts.
+- View anonymized metrics: active users, screenings, bookings, Server posts.
 - Export anonymized CSV (prototype).
 
 ---
@@ -46,8 +46,8 @@ MindSphere is a full-stack prototype designed to provide stigma-free, confidenti
 client/         # React + Vite frontend
   src/
     components/         # UI components (PHQ9Modal, etc.)
-    hooks/              # API hooks (forumApi, useSocket, etc.)
-    pages/              # Main pages (Chatbot, Booking, Forum, etc.)
+    hooks/              # API hooks (useSocket, etc.)
+    pages/              # Main pages (Chatbot, Booking, etc.)
     services/           # Auth and backend services
     assets/             # Static assets
   public/               # Static files
@@ -60,7 +60,7 @@ server/         # Flask backend API (main REST endpoints)
   requirements.txt      # Python dependencies
   package.json          # Node.js dependencies
 
-socketserver/   # Flask-SocketIO backend for real-time forum
+socketserver/   # Flask-SocketIO backend for real-time service
   api/
     index.py            # WebSocket events, post/reply handling
   requirements.txt      # Python dependencies
@@ -99,7 +99,7 @@ cd socketserver
 pip install -r requirements.txt
 python api/index.py
 ```
-- WebSocket server for real-time forum features (default port: 3000).
+- WebSocket server for real-time features (default port: 3000).
 
 ---
 
@@ -110,7 +110,6 @@ python api/index.py
 - `/api/phq9` — PHQ-9 submission (POST), fetch latest (GET)
 - `/api/bookings` — Book counselor (GET/POST)
 - `/api/resources` — Resource search (GET/POST)
-- `/api/forum` — Forum posts (GET/POST)
 - `/api/screenings` — Screening results (GET/POST)
 - `/api/clients` — Client submissions (GET/POST)
 - `/api/admin` — Metrics (GET)

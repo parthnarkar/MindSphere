@@ -85,13 +85,13 @@ export default function Booking() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-8">
+  <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
       <h2 className="text-3xl font-extrabold text-center text-blue-700 mb-8">
         Book a Counsellor
       </h2>
 
       {/* Counsellor Placards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-12">
         {counsellors.map(c => (
           <div key={c.id} className="p-5 border rounded-3xl shadow-lg hover:shadow-xl transition flex flex-col items-center bg-white">
             {c.image && <img src={c.image} alt={c.name} className="w-24 h-24 rounded-full mb-3 border-2 border-blue-100" />}
@@ -111,8 +111,8 @@ export default function Booking() {
 
       {/* Booking Popup */}
       {showPopup && selectedCounsellor && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full relative animate-fadeIn">
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md sm:max-w-lg w-full relative animate-fadeIn">
             <h3 className="text-2xl font-bold text-blue-700 mb-5 text-center">
               Book with {selectedCounsellor.name}
             </h3>

@@ -4,7 +4,6 @@ import AuthPage from "./pages/Authentication";
 import Chatbot from "./pages/Chatbot";
 import Screening from "./pages/Screening";
 import Booking from "./pages/Booking";
-import Forum from "./pages/Forum";
 import Resources from "./pages/Resources";
 import Admin from "./pages/Admin";
 import PeerToPeer from "./pages/Peer-to-Peer";
@@ -15,6 +14,7 @@ import { API } from "./hooks/helper";
 import { db } from "./firebase";
 import { collection, getDocs } from "firebase/firestore";
 import Header from "./components/Header";
+import Layout from "./components/Layout";
 import CounsellorsGrid from "./components/CounsellorsGrid";
 import { PrivateRoute, CounsellorRoute } from "./components/ProtectedRoutes";
 
@@ -24,6 +24,7 @@ function App() {
   const [counsellors, setCounsellors] = useState([]);
   const [showPhq9, setShowPhq9] = useState(false);
   const [phq9Checked, setPhq9Checked] = useState(false);
+  const [firstLoginCandidate, setFirstLoginCandidate] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthChange((currentUser) => {
@@ -31,9 +32,18 @@ function App() {
       setLoading(false);
       // Show immediately after login for non-counsellor; will auto-close if recent submission exists
       if (currentUser) {
-        // Only show PHQ modal for signed-up users who are not counsellors
+        // Only show PHQ modal for signed-up users who are not counsellors. Show it
+        // only when the session 'firstLogin' flag is set (set at signup/login time).
         if (currentUser.signedUp && currentUser.role !== "counsellor") {
-          setShowPhq9(true);
+          // Do NOT set showPhq9 here (avoids visual flicker). Instead record if the
+          // session indicates first-login; the checkPhq9 effect will decide
+          // whether to show the modal after verifying the server state.
+          const isFirstLogin = currentUser.signedUp && currentUser.role !== 'counsellor' && !!sessionStorage.getItem('firstLogin');
+          setFirstLoginCandidate(isFirstLogin);
+          // reset phq9Checked so the check effect runs
+          setPhq9Checked(false);
+          // ensure modal is hidden until the check completes
+          setShowPhq9(false);
         } else {
           setShowPhq9(false);
         }
@@ -41,6 +51,7 @@ function App() {
       } else {
         setShowPhq9(false);
         setPhq9Checked(false);
+        setFirstLoginCandidate(false);
       }
     });
     return () => unsubscribe();
@@ -49,7 +60,9 @@ function App() {
   // Check PHQ-9 last submission; show modal if none in last 7 days
   useEffect(() => {
     const checkPhq9 = async () => {
-      if (!user || phq9Checked || user.role === "counsellor") return;
+      // Only run the check when we have a user and we haven't already checked,
+      // and only if the session indicated this is a first-login candidate.
+      if (!user || phq9Checked || user.role === "counsellor" || !firstLoginCandidate) return;
       try {
         const base = API || "http://localhost:5000";
         const url = `${base.replace(/\/$/, "")}/api/phq9/${encodeURIComponent(user.email)}`;
@@ -60,25 +73,23 @@ function App() {
           const ts = new Date(data.timestamp);
           const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
           if (ts >= sevenDaysAgo) {
-            // Recent submission — close the modal
             setShowPhq9(false);
           } else {
-            // Older than 7 days — keep showing
             setShowPhq9(true);
           }
         } else {
-          // No record — keep showing
           setShowPhq9(true);
         }
-      } catch (_) {
-        // On error, do not block; allow modal to show
-        setShowPhq9(true);
+      } catch (e) {
+        // If the check errors, do not forcibly show the modal — hide it to avoid flicker.
+        console.warn('PHQ check failed:', e);
+        setShowPhq9(false);
       } finally {
         setPhq9Checked(true);
       }
     };
     checkPhq9();
-  }, [user, phq9Checked]);
+  }, [user, phq9Checked, firstLoginCandidate]);
 
   const handleLogout = async () => {
     await logoutUser();
@@ -105,10 +116,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-gray-900">
-      {/* Header */}
-      {user && <Header user={user} onLogout={handleLogout} onShowPhq9={() => setShowPhq9(true)} />}
-
+    <Layout user={user} onLogout={handleLogout} onShowPhq9={() => setShowPhq9(true)}>
       {/* PHQ-9 Modal */}
       {user && user.role !== "counsellor" && showPhq9 && (
         <PHQ9Modal
@@ -119,9 +127,7 @@ function App() {
         />
       )}
 
-
-      <main className="max-w-8xl mx-auto">
-        <Routes>
+      <Routes>
           {/* Login / Redirect */}
           <Route
             path="/"
@@ -150,7 +156,6 @@ function App() {
             path="/peer-to-peer" element={<PrivateRoute user={user}><PeerToPeer /></PrivateRoute>} />
           <Route path="/screening" element={<PrivateRoute user={user}><Screening /></PrivateRoute>} />
           <Route path="/booking" element={<PrivateRoute user={user}><Booking counsellors={counsellors} /></PrivateRoute>} />
-          <Route path="/forum" element={<PrivateRoute user={user}><Forum /></PrivateRoute>} />
           <Route path="/resources" element={<PrivateRoute user={user}><Resources /></PrivateRoute>} />
           <Route path="/admin" element={<PrivateRoute user={user}><Admin /></PrivateRoute>} />
 
@@ -158,8 +163,7 @@ function App() {
           <Route path="/CounsellorDashboard" element={<CounsellorRoute user={user}><CounsellorDashboard /></CounsellorRoute>} />
         </Routes>
         <CounsellorsGrid counsellors={counsellors} />
-      </main>
-    </div>
+    </Layout>
   );
 }
 
