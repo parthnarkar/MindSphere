@@ -28,7 +28,8 @@ function App() {
       setLoading(false);
       // Show immediately after login for non-counsellor; will auto-close if recent submission exists
       if (currentUser) {
-        if (currentUser.role !== "counsellor") {
+        // Only show PHQ modal for signed-up users who are not counsellors
+        if (currentUser.signedUp && currentUser.role !== "counsellor") {
           setShowPhq9(true);
         } else {
           setShowPhq9(false);
@@ -82,11 +83,12 @@ function App() {
   };
 
   const PrivateRoute = ({ children }) => {
-    return user ? children : <Navigate to="/" />;
+    // Require authenticated and signed-up users (role can be 'user' or other non-null)
+    return user && user.signedUp && user.role ? children : <Navigate to="/" />;
   };
 
   const CounsellorRoute = ({ children }) => {
-    return user && user.role === "counsellor" ? children : <Navigate to="/" />;
+    return user && user.signedUp && user.role === "counsellor" ? children : <Navigate to="/" />;
   };
 
   if (loading) return <div>Loading...</div>;
@@ -168,14 +170,19 @@ function App() {
           <Route
             path="/"
             element={
-              user ? (
+              // If not logged in, show auth page
+              !user ? (
+                <AuthPage />
+              ) : (
+                // If logged in but not signed up, redirect to auth/signup for completion
+                !user.signedUp ? (
+                  <AuthPage />
+                ) : // signed-up: route by role
                 user.role === "counsellor" ? (
                   <Navigate to="/CounsellorDashboard" />
                 ) : (
                   <Navigate to="/chatbot" />
                 )
-              ) : (
-                <AuthPage />
               )
             }
           />

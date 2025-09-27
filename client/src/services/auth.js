@@ -13,8 +13,10 @@ export const loginUser = async (email, password) => {
   const user = userCredential.user;
   // Fetch role from Firestore
   const userDoc = await getDoc(doc(db, "users", user.uid));
-  const role = userDoc.exists() ? userDoc.data().role : "user";
-  return { user, role };
+  const signedUp = userDoc.exists();
+  const role = signedUp ? userDoc.data().role : null;
+  // Return signedUp flag so callers can decide whether to prompt signup
+  return { user, role, signedUp };
 };
 
 // Register new user with role
@@ -59,9 +61,20 @@ export const onAuthChange = (callback) => {
     if (currentUser) {
       // Fetch role from Firestore
       const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-      const role = userDoc.exists() ? userDoc.data().role : "user";
-      // Add role to user object
-      const userWithRole = { ...currentUser, role };
+      const signedUp = userDoc.exists();
+      const role = signedUp ? userDoc.data().role : null;
+      // If counsellor, ensure counsellor profile existence flag
+      let counsellorProfile = false;
+      if (role === 'counsellor') {
+        try {
+          const cDoc = await getDoc(doc(db, 'counsellors', currentUser.uid));
+          counsellorProfile = cDoc.exists();
+        } catch (e) {
+          counsellorProfile = false;
+        }
+      }
+      // Add role and signedUp to user object
+      const userWithRole = { ...currentUser, role, signedUp, counsellorProfile };
       callback(userWithRole);
     } else {
       callback(null);

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { loginUser, registerUser } from "../services/auth";
+import { loginUser, registerUser, logoutUser } from "../services/auth";
+import { useNavigate } from 'react-router-dom';
 import bgVideo from "../assets/Login.mp4";
 import logo from "../assets/mindsphere-logo.png";
 
@@ -12,12 +13,29 @@ const AuthPage = () => {
   const [specialization, setSpecialization] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const navigate = useNavigate();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
     try {
-      await loginUser(email, password);
+      const result = await loginUser(email, password);
+      // Validate that the signed-in account matches the selected role
+      const signedUp = result && result.signedUp;
+      const acctRole = result && result.role;
+      if (!signedUp || acctRole !== role) {
+        // Sign them out immediately and show guidance
+        try { await logoutUser(); } catch (_) {}
+        // Friendly message depending on mismatch
+        if (!signedUp) {
+          setError(`This account has not completed signup. Please sign up as a ${role} first.`);
+        } else {
+          setError(`This account is registered as '${acctRole}'. Please sign in using the '${acctRole}' role or sign up as a '${role}'.`);
+        }
+        return;
+      }
+      // Successful login - navigate to root which will redirect based on role
+      navigate('/');
     } catch (err) {
       setError(err.message || "Login failed");
     }
