@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
+import CounsellorProfileForm from "../components/CounsellorProfileForm";
 
 const CounsellorDashboard = () => {
   const [appointments, setAppointments] = useState([]);
@@ -13,20 +14,42 @@ const CounsellorDashboard = () => {
   const [phqLoading, setPhqLoading] = useState(true);
   const [phqError, setPhqError] = useState(null);
 
+  // Form state
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileLoadingState, setProfileLoadingState] = useState(true);
+
   const BACKEND = "http://localhost:5000"; // Replace with your backend URL if different
 
   // Fetch counsellor info
   useEffect(() => {
     const fetchCounsellorInfo = async () => {
       if (!auth.currentUser) return;
+      setProfileLoadingState(true);
       try {
         const docRef = doc(db, "counsellors", auth.currentUser.uid);
         const docSnap = await getDoc(docRef);
         if (docSnap.exists()) {
-          setCounsellor({ id: docSnap.id, ...docSnap.data() });
+          const data = docSnap.data();
+          setCounsellor({ id: docSnap.id, ...data });
+          
+          // Check if profile is complete (has all required fields)
+          const requiredFields = ['name', 'number', 'email', 'specialization', 'experience', 'address', 'careerInformation'];
+          const isProfileComplete = requiredFields.every(field => data[field] && data[field].trim() !== '');
+          
+          if (!isProfileComplete) {
+            setShowProfileForm(true);
+          }
+        } else {
+          // No profile exists, show form
+          setShowProfileForm(true);
         }
       } catch (error) {
         console.error("Error fetching counsellor info:", error);
+        // On error, show form to allow user to create profile
+        setShowProfileForm(true);
+      } finally {
+        setProfileLoadingState(false);
       }
     };
     fetchCounsellorInfo();
@@ -121,25 +144,121 @@ const CounsellorDashboard = () => {
     }
   };
 
+  const handleProfileSubmit = async (formData) => {
+    setProfileLoading(true);
+    try {
+      const profileData = {
+        ...formData,
+        email: auth.currentUser.email, // Use the authenticated user's email
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Save to Firestore
+      const docRef = doc(db, "counsellors", auth.currentUser.uid);
+      await setDoc(docRef, profileData, { merge: true });
+
+      // Update local state
+      setCounsellor({ id: auth.currentUser.uid, ...profileData });
+      setShowProfileForm(false);
+      alert('Profile saved successfully!');
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      alert('Error saving profile. Please try again.');
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
+  const handleProfileCancel = () => {
+    setShowProfileForm(false);
+  };
+
+  // Show loading state while fetching profile
+  if (profileLoadingState) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your profile...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <h1 className="text-3xl font-extrabold text-blue-700 mb-6">Counsellor Dashboard</h1>
 
+      {/* Profile Form Modal */}
+      {showProfileForm && (
+        <CounsellorProfileForm
+          onSubmit={handleProfileSubmit}
+          onCancel={handleProfileCancel}
+          isLoading={profileLoading}
+        />
+      )}
+
       {/* Counsellor Info */}
       {counsellor && (
-        <div className="bg-white shadow-lg rounded-2xl p-6 mb-10 flex flex-col md:flex-row items-center gap-6">
-          {counsellor.image && (
-            <img
-              src={counsellor.image}
-              alt={counsellor.name}
-              className="w-32 h-32 rounded-full border-2 border-blue-100"
-            />
-          )}
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold text-gray-800">{counsellor.name}</h2>
-            <p className="text-gray-600 mb-1">Specialization: {counsellor.specialization}</p>
-            <p className="text-gray-600 mb-1">📧 {counsellor.email}</p>
-            <p className="text-gray-600">📞 {counsellor.phone}</p>
+        <div className="bg-white shadow-lg rounded-2xl p-6 mb-10">
+          <div className="flex flex-col md:flex-row items-start gap-6">
+            {counsellor.image && (
+              <img
+                src={counsellor.image}
+                alt={counsellor.name}
+                className="w-32 h-32 rounded-full border-2 border-blue-100 object-cover"
+              />
+            )}
+            <div className="flex-1">
+              <h2 className="text-2xl font-bold text-gray-800 mb-4">{counsellor.name}</h2>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-gray-600 mb-2"><span className="font-medium">Specialization:</span> {counsellor.specialization}</p>
+                  <p className="text-gray-600 mb-2"><span className="font-medium">📧 Email:</span> {counsellor.email}</p>
+                  <p className="text-gray-600 mb-2"><span className="font-medium">📞 Phone:</span> {counsellor.number}</p>
+                  <p className="text-gray-600 mb-2"><span className="font-medium">Experience:</span> {counsellor.experience} years</p>
+                  {counsellor.location && (
+                    <p className="text-gray-600 mb-2"><span className="font-medium">Location:</span> {counsellor.location}</p>
+                  )}
+                </div>
+                <div>
+                  {counsellor.qualifications && (
+                    <p className="text-gray-600 mb-2"><span className="font-medium">Qualifications:</span> {counsellor.qualifications}</p>
+                  )}
+                  {counsellor.languages && (
+                    <p className="text-gray-600 mb-2"><span className="font-medium">Languages:</span> {counsellor.languages}</p>
+                  )}
+                  {counsellor.consultationFee && (
+                    <p className="text-gray-600 mb-2"><span className="font-medium">Consultation Fee:</span> ₹{counsellor.consultationFee}</p>
+                  )}
+                  {counsellor.availability && (
+                    <p className="text-gray-600 mb-2"><span className="font-medium">Availability:</span> {counsellor.availability}</p>
+                  )}
+                </div>
+              </div>
+
+              {counsellor.address && (
+                <div className="mt-4">
+                  <p className="text-gray-600"><span className="font-medium">Address:</span> {counsellor.address}</p>
+                </div>
+              )}
+
+              {counsellor.careerInformation && (
+                <div className="mt-4">
+                  <p className="text-gray-600"><span className="font-medium">Career Information:</span></p>
+                  <p className="text-gray-600 mt-1">{counsellor.careerInformation}</p>
+                </div>
+              )}
+
+              {counsellor.bio && (
+                <div className="mt-4">
+                  <p className="text-gray-600"><span className="font-medium">Bio:</span></p>
+                  <p className="text-gray-600 mt-1">{counsellor.bio}</p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
