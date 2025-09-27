@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
-import AuthPage from "./pages/login";
+import AuthPage from "./pages/Authentication";
 import Chatbot from "./pages/Chatbot";
 import Screening from "./pages/Screening";
 import Booking from "./pages/Booking";
@@ -100,7 +100,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="min-h-screen bg-black text-gray-900">
       {/* Header */}
       {user && (
         <header className="bg-white shadow mb-4">
@@ -162,7 +162,7 @@ function App() {
       )}
 
 
-      <main className="max-w-8xl mx-auto p-4">
+      <main className="max-w-8xl mx-auto">
         <Routes>
           {/* Login / Redirect */}
           <Route
