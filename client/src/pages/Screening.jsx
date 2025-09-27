@@ -67,7 +67,7 @@ export default function Screening({ user }) {
     const checkPhq9 = async () => {
       if (!user || phq9Checked || user.role === "counsellor") return;
       try {
-        const base = API || "http://localhost:5000";
+        const base = API;
         const url = `${base.replace(/\/$/, "")}/api/phq9/${encodeURIComponent(user.email)}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error("phq9 fetch failed");

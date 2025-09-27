@@ -37,8 +37,9 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
     `px-2 py-1 rounded text-left w-full md:w-auto ${isActive ? 'text-blue-700 font-semibold' : 'text-gray-700 hover:text-blue-600'} transition truncate whitespace-nowrap`;
 
   return (
-    <header className="bg-white shadow mb-4 overflow-hidden">
-      <div className="max-w-6xl mx-auto flex items-center justify-between py-3 px-4 sm:px-6">
+    // fixed header at top
+    <header className="fixed inset-x-0 top-0 bg-white shadow z-50 overflow-hidden">
+      <div className="max-w-6xl mx-auto flex items-center justify-between h-16 px-4 sm:px-6">
         <div className="flex items-center gap-4">
           <button
             className="md:hidden p-2 rounded-md flex-shrink-0"
@@ -76,7 +77,8 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
         {open && (
           <div className="fixed inset-0 z-40">
             <div className="absolute inset-0 bg-black/30" onClick={() => setOpen(false)} aria-hidden="true" />
-            <div ref={panelRef} className="absolute top-0 left-0 w-3/4 max-w-xs h-full bg-white shadow-lg p-4 transform transition-transform translate-x-0 overflow-y-auto box-border">
+            {/* place panel below the fixed header and stretch to bottom */}
+            <div ref={panelRef} style={{ top: '4rem', bottom: 0 }} className="absolute left-0 w-3/4 max-w-xs bg-white shadow-lg p-4 transform transition-transform translate-x-0 overflow-y-auto box-border">
               <div className="flex items-center justify-between mb-4">
                 <div className="text-lg font-semibold">Menu</div>
                 <button onClick={() => setOpen(false)} aria-label="Close menu" className="p-2">✕</button>

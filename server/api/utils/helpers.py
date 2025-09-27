@@ -71,3 +71,40 @@ def looks_student_mh_related(message: str) -> bool:
 
 def build_coping_prompt(user_message: str) -> str:
     return f"{COPING_SYSTEM_PROMPT}\nUser context: {user_message}\nConstraints: keep it brief and actionable."
+
+
+def detect_intent(message: str):
+    """Return a simple intent label and confidence score for the message.
+
+    This centralizes categorical intent heuristics on the server. The returned
+    dict contains: {'intent': str, 'confidence': float}
+    """
+    if not message or not isinstance(message, str):
+        return {'intent': 'unknown', 'confidence': 0.0}
+    ml = message.lower()
+
+    # Strong crisis indicators
+    if detect_crisis(ml):
+        return {'intent': 'crisis', 'confidence': 0.99}
+
+    # Screening / PHQ related
+    if any(x in ml for x in ['phq', 'depress', 'anxiet', 'screening', 'assessment', 'how depressed']):
+        return {'intent': 'screening', 'confidence': 0.9}
+
+    # Booking / appointment
+    if any(w in ml for w in ['book', 'appointment', 'schedule', 'reserve', 'meet']):
+        return {'intent': 'booking', 'confidence': 0.85}
+
+    # Support / resources
+    if any(w in ml for w in ['cope', 'coping', 'strategy', 'resource', 'tips', 'advice']):
+        return {'intent': 'support', 'confidence': 0.8}
+
+    # Greeting
+    if any(w in ml for w in ['hi', 'hello', 'hey', 'good morning', 'good evening']):
+        return {'intent': 'greeting', 'confidence': 0.75}
+
+    # Fallback: use heuristic checks for student MH content then general
+    if looks_student_mh_related(ml):
+        return {'intent': 'general', 'confidence': 0.65}
+
+    return {'intent': 'other', 'confidence': 0.5}

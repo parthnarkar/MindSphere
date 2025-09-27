@@ -21,6 +21,7 @@ import { PrivateRoute, CounsellorRoute } from "./components/ProtectedRoutes";
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [initialAuthChecked, setInitialAuthChecked] = useState(false);
   const [counsellors, setCounsellors] = useState([]);
   const [showPhq9, setShowPhq9] = useState(false);
   const [phq9Checked, setPhq9Checked] = useState(false);
@@ -30,6 +31,9 @@ function App() {
     const unsubscribe = onAuthChange((currentUser) => {
       setUser(currentUser);
       setLoading(false);
+      // mark that the initial auth check completed so we don't show the
+      // full-screen loader on subsequent auth changes (prevents flicker)
+      setInitialAuthChecked(true);
       // Show immediately after login for non-counsellor; will auto-close if recent submission exists
       if (currentUser) {
         // Only show PHQ modal for signed-up users who are not counsellors. Show it
@@ -38,7 +42,10 @@ function App() {
           // Do NOT set showPhq9 here (avoids visual flicker). Instead record if the
           // session indicates first-login; the checkPhq9 effect will decide
           // whether to show the modal after verifying the server state.
-          const isFirstLogin = currentUser.signedUp && currentUser.role !== 'counsellor' && !!sessionStorage.getItem('firstLogin');
+          const isFirstLogin =
+            currentUser.signedUp &&
+            currentUser.role !== "counsellor" &&
+            !!sessionStorage.getItem("firstLogin");
           setFirstLoginCandidate(isFirstLogin);
           // reset phq9Checked so the check effect runs
           setPhq9Checked(false);
@@ -62,10 +69,18 @@ function App() {
     const checkPhq9 = async () => {
       // Only run the check when we have a user and we haven't already checked,
       // and only if the session indicated this is a first-login candidate.
-      if (!user || phq9Checked || user.role === "counsellor" || !firstLoginCandidate) return;
+      if (
+        !user ||
+        phq9Checked ||
+        user.role === "counsellor" ||
+        !firstLoginCandidate
+      )
+        return;
       try {
-        const base = API || "http://localhost:5000";
-        const url = `${base.replace(/\/$/, "")}/api/phq9/${encodeURIComponent(user.email)}`;
+        const base = API;
+        const url = `${base.replace(/\/$/, "")}/api/phq9/${encodeURIComponent(
+          user.email
+        )}`;
         const res = await fetch(url);
         if (!res.ok) throw new Error("phq9 fetch failed");
         const data = await res.json();
@@ -82,7 +97,7 @@ function App() {
         }
       } catch (e) {
         // If the check errors, do not forcibly show the modal — hide it to avoid flicker.
-        console.warn('PHQ check failed:', e);
+        console.warn("PHQ check failed:", e);
         setShowPhq9(false);
       } finally {
         setPhq9Checked(true);
@@ -102,10 +117,23 @@ function App() {
   };
 
   const CounsellorRoute = ({ children }) => {
-    return user && user.signedUp && user.role === "counsellor" ? children : <Navigate to="/" />;
+    return user && user.signedUp && user.role === "counsellor" ? (
+      children
+    ) : (
+      <Navigate to="/" />
+    );
   };
 
-  if (loading) return <div>Loading...</div>;
+  if (loading && !initialAuthChecked) {
+    // Well Designed Logo Flicker Linear Loading State
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <div className="text-center">
+          <img src="/public/mindsphere-logo.png" alt="Loading..." className="animate-pulse h-25 w-25 mx-auto" />
+        </div>
+      </div>
+    );
+  }
 
   // Route component that opens the PHQ9 modal instead of rendering Screening page
   function ScreenModalRoute() {
@@ -116,7 +144,11 @@ function App() {
   }
 
   return (
-    <Layout user={user} onLogout={handleLogout} onShowPhq9={() => setShowPhq9(true)}>
+    <Layout
+      user={user}
+      onLogout={handleLogout}
+      onShowPhq9={() => setShowPhq9(true)}
+    >
       {/* PHQ-9 Modal */}
       {user && user.role !== "counsellor" && showPhq9 && (
         <PHQ9Modal
@@ -128,41 +160,87 @@ function App() {
       )}
 
       <Routes>
-          {/* Login / Redirect */}
-          <Route
-            path="/"
-            element={
-              // If not logged in, show auth page
-              !user ? (
-                <AuthPage />
-              ) : (
-                // If logged in but not signed up, redirect to auth/signup for completion
-                !user.signedUp ? (
-                  <AuthPage />
-                ) : // signed-up: route by role
-                user.role === "counsellor" ? (
-                  <Navigate to="/CounsellorDashboard" />
-                ) : (
-                  <Navigate to="/chatbot" />
-                )
-              )
-            }
-          />
-          <Route path="/login" element={<AuthPage />} />
+        {/* Login / Redirect */}
+        <Route
+          path="/"
+          element={
+            // If not logged in, show auth page
+            !user ? (
+              <AuthPage />
+            ) : // If logged in but not signed up, redirect to auth/signup for completion
+            !user.signedUp ? (
+              <AuthPage />
+            ) : // signed-up: route by role
+            user.role === "counsellor" ? (
+              <Navigate to="/CounsellorDashboard" />
+            ) : (
+              <Navigate to="/chatbot" />
+            )
+          }
+        />
+        <Route path="/login" element={<AuthPage />} />
 
-          {/* Protected Pages */}
-          <Route path="/chatbot" element={<PrivateRoute user={user}><Chatbot /></PrivateRoute>} />
-          <Route
-            path="/peer-to-peer" element={<PrivateRoute user={user}><PeerToPeer /></PrivateRoute>} />
-          <Route path="/screening" element={<PrivateRoute user={user}><Screening /></PrivateRoute>} />
-          <Route path="/booking" element={<PrivateRoute user={user}><Booking counsellors={counsellors} /></PrivateRoute>} />
-          <Route path="/resources" element={<PrivateRoute user={user}><Resources /></PrivateRoute>} />
-          <Route path="/admin" element={<PrivateRoute user={user}><Admin /></PrivateRoute>} />
+        {/* Protected Pages */}
+        <Route
+          path="/chatbot"
+          element={
+            <PrivateRoute user={user}>
+              <Chatbot />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/peer-to-peer"
+          element={
+            <PrivateRoute user={user}>
+              <PeerToPeer />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/screening"
+          element={
+            <PrivateRoute user={user}>
+              <Screening />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/booking"
+          element={
+            <PrivateRoute user={user}>
+              <Booking counsellors={counsellors} />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/resources"
+          element={
+            <PrivateRoute user={user}>
+              <Resources />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <PrivateRoute user={user}>
+              <Admin />
+            </PrivateRoute>
+          }
+        />
 
-          {/* Counsellor-only route */}
-          <Route path="/CounsellorDashboard" element={<CounsellorRoute user={user}><CounsellorDashboard /></CounsellorRoute>} />
-        </Routes>
-        <CounsellorsGrid counsellors={counsellors} />
+        {/* Counsellor-only route */}
+        <Route
+          path="/CounsellorDashboard"
+          element={
+            <CounsellorRoute user={user}>
+              <CounsellorDashboard />
+            </CounsellorRoute>
+          }
+        />
+      </Routes>
+      <CounsellorsGrid counsellors={counsellors} />
     </Layout>
   );
 }

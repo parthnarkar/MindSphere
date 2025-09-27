@@ -79,7 +79,6 @@ python -m venv .venv
 pip install -r requirements.txt
 python api/index.py
 ```
-- The backend runs on [http://localhost:5000](http://localhost:5000).
 - Requires MongoDB (set `MONGO_URI` in `.env`).
 
 ### 2. Frontend (React + Vite)

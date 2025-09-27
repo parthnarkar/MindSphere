@@ -39,7 +39,7 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
     setSubmitting(true);
     setError("");
     try {
-      const base = API || "http://localhost:5000";
+      const base = API;
       const url = `${base.replace(/\/$/, "")}/api/phq9`;
       const res = await fetch(url, {
         method: "POST",

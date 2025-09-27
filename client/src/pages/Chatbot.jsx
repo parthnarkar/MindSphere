@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
+import { API } from "../hooks/helper";
 
 export default function Chatbot() {
   const [messages, setMessages] = useState([
     { from: "bot", text: "Hi — I'm an anonymous, stigma-free supporter. How can I help today?" },
   ]);
+  const [isTyping, setIsTyping] = useState(false);
   const [input, setInput] = useState("");
   const containerRef = useRef(null);
 
@@ -14,16 +16,18 @@ export default function Chatbot() {
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  // first welcome message is intentionally hardcoded locally; subsequent replies come from the server model
+
+
   function send() {
     if (!input.trim()) return;
-    const user = { from: "user", text: input.trim() };
+  const user = { from: "user", text: input.trim() };
     setMessages((m) => [...m, user]);
     setInput("");
 
-    const url = "http://localhost:5000/api/chat";
-
+    const url = `${API}/api/chat`;
     // show typing indicator
-    setMessages((m) => [...m, { from: "bot", text: "..." }]);
+    setIsTyping(true);
 
     fetch(url, {
       method: "POST",
@@ -32,19 +36,17 @@ export default function Chatbot() {
     })
       .then((r) => r.json())
       .then((data) => {
-        // remove typing indicator (last bot message) and append real reply
+        // append real reply
         setMessages((m) => {
-          const withoutTyping = m.slice(0, -1);
-          const reply = data.response || "(no reply)";
-          return [...withoutTyping, { from: "bot", text: reply }];
+          const reply = data.response || "";
+          return [...m, { from: "bot", text: reply }];
         });
       })
       .catch((err) => {
-        setMessages((m) => {
-          const withoutTyping = m.slice(0, -1);
-          return [...withoutTyping, { from: "bot", text: "(Error contacting server)" }];
-        });
-      });
+        setMessages((m) => [...m, { from: "bot", text: "(Error contacting server)" }]);
+      })
+      // hide typing indicator regardless of outcome
+      .finally(() => setIsTyping(false));
   }
 
   // handle Enter to send (Shift+Enter for newline)
@@ -76,6 +78,7 @@ export default function Chatbot() {
 
                   <div className={`max-w-[78%] px-4 py-2 rounded-lg ${m.from === "user" ? "bg-blue-600 text-white rounded-br-none" : "bg-white text-gray-800 rounded-bl-none border"}`}>
                     <div className="whitespace-pre-wrap">{m.text}</div>
+                    {/* intent labels are detected on server now; client UI shows only text */}
                   </div>
 
                   {m.from === "user" && (
@@ -85,6 +88,14 @@ export default function Chatbot() {
                   )}
                 </div>
               ))}
+              {isTyping && (
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0">
+                    <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">B</div>
+                  </div>
+                  <div className="max-w-[78%] px-4 py-2 rounded-lg bg-white text-gray-500 rounded-bl-none border italic">Generating...</div>
+                </div>
+              )}
             </div>
 
             <div className="mt-4">

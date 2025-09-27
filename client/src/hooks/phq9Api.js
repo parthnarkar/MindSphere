@@ -1,6 +1,6 @@
 import { API } from "./helper";
 
-const base = (API || "http://localhost:5000").replace(/\/$/, "");
+const base = API
 
 export async function getLatestPhq9(email) {
   const url = `${base}/api/phq9/${encodeURIComponent(email)}`;

@@ -84,18 +84,19 @@ const AuthPage = () => {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-black px-4">
-      {/* Background video - hidden on very small screens for performance */}
+    <div className="relative min-h-screen flex items-center justify-center bg-black px-4 overflow-hidden">
+      {/* Background video - fixed to viewport and covers entire page */}
       <video
-        className="hidden sm:block absolute inset-0 w-full h-full object-cover pointer-events-none opacity-70"
+        className="fixed inset-0 w-full h-full object-cover pointer-events-none z-0"
         src={bgVideo}
         autoPlay
         muted
         loop
         playsInline
+        poster={logo}
       />
       {/* Subtle overlay to improve contrast */}
-      <div className="hidden sm:block absolute inset-0 bg-black/30 pointer-events-none" />
+      <div className="fixed inset-0 bg-black/30 pointer-events-none z-5" />
 
   <div className="relative z-10 bg-white/70 shadow-xl rounded-2xl overflow-hidden w-full max-w-6xl grid grid-cols-1 md:grid-cols-2">
         {/* Left panel - simple illustration and brand */}

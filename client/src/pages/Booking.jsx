@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase";
+import logo from "../assets/mindsphere-logo.png";
 import { collection, getDocs, addDoc, serverTimestamp, query, where } from "firebase/firestore";
 
 export default function Booking() {
@@ -85,23 +86,33 @@ export default function Booking() {
   };
 
   return (
-  <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-      <h2 className="text-3xl font-extrabold text-center text-blue-700 mb-8">
+  <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+      <h2 className="text-3xl font-extrabold text-center text-blue-700 mb-6">
         Book a Counsellor
       </h2>
 
+      <p className="text-center text-gray-600 mb-8 max-w-2xl mx-auto">Choose from available counsellors below and pick a time that works for you. You can book anonymously if preferred.</p>
+
       {/* Counsellor Placards */}
-  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-12">
+  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-12">
         {counsellors.map(c => (
-          <div key={c.id} className="p-5 border rounded-3xl shadow-lg hover:shadow-xl transition flex flex-col items-center bg-white">
-            {c.image && <img src={c.image} alt={c.name} className="w-24 h-24 rounded-full mb-3 border-2 border-blue-100" />}
-            <h3 className="text-xl font-semibold text-gray-800">{c.name}</h3>
-            <p className="text-gray-600">{c.specialization}</p>
-            <p className="text-gray-500 text-sm">{c.email}</p>
-            <p className="text-gray-500 text-sm">{c.phone}</p>
+          <div key={c.id} className="p-5 border rounded-2xl shadow hover:shadow-xl transition flex flex-col items-center bg-white">
+            <img
+              src={c.image || logo}
+              alt={c.name}
+              onError={(e) => { e.target.src = logo; }}
+              className="w-24 h-24 rounded-full mb-3 border-2 border-blue-50 object-cover"
+            />
+            <h3 className="text-lg sm:text-xl font-semibold text-gray-800 text-center">{c.name}</h3>
+            <p className="text-sm text-gray-600 mt-1 text-center">{c.specialization || 'Counselling'}</p>
+            <div className="mt-3 text-center text-xs text-gray-500">
+              <div>{c.email}</div>
+              <div>{c.phone}</div>
+            </div>
             <button
-              className="mt-4 px-5 py-2 bg-blue-600 text-white font-medium rounded-full hover:bg-blue-700 transition"
+              className="mt-4 px-4 py-2 bg-blue-600 text-white font-medium rounded-full hover:bg-blue-700 transition"
               onClick={() => handleBookClick(c)}
+              aria-label={`Book with ${c.name}`}
             >
               Book
             </button>
@@ -111,24 +122,29 @@ export default function Booking() {
 
       {/* Booking Popup */}
       {showPopup && selectedCounsellor && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 px-4">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md sm:max-w-lg w-full relative animate-fadeIn">
-            <h3 className="text-2xl font-bold text-blue-700 mb-5 text-center">
-              Book with {selectedCounsellor.name}
-            </h3>
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-start sm:items-center justify-center z-50 px-4 py-6 sm:py-0">
+          <div role="dialog" aria-modal="true" aria-labelledby="book-dialog-title" className="bg-white p-6 rounded-2xl shadow-2xl max-w-xl sm:w-full relative w-full animate-fadeIn">
+            <div className="flex items-center gap-3 mb-4">
+              <img src={selectedCounsellor.image || logo} onError={(e)=>{e.target.src = logo}} alt={selectedCounsellor.name} className="w-12 h-12 rounded-full object-cover" />
+              <div>
+                <h3 id="book-dialog-title" className="text-xl font-bold text-blue-700">Book with {selectedCounsellor.name}</h3>
+                <div className="text-sm text-gray-600">{selectedCounsellor.specialization}</div>
+              </div>
+            </div>
 
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
+            <form className="grid grid-cols-1 sm:grid-cols-2 gap-4"> 
+              <div className="sm:col-span-2 flex items-center gap-3">
                 <input
+                  id="anonymous"
                   type="checkbox"
                   className="w-5 h-5 accent-blue-600"
                   checked={anonymous}
                   onChange={(e) => setAnonymous(e.target.checked)}
                 />
-                <label className="text-gray-700 font-medium">Book anonymously</label>
+                <label htmlFor="anonymous" className="text-gray-700 font-medium">Book anonymously</label>
               </div>
 
-              <label className="block">
+              <label className="block sm:col-span-2">
                 Your Name
                 <input
                   type="text"
@@ -162,7 +178,7 @@ export default function Booking() {
                 />
               </label>
 
-              <label className="block">
+              <label className="block sm:col-span-2">
                 Preferred Time
                 <input
                   type="datetime-local"
@@ -172,19 +188,22 @@ export default function Booking() {
                 />
               </label>
 
-              {bookingStatus === "success" && <p className="text-green-600 font-medium">Booking confirmed! ✅</p>}
-              {bookingStatus === "error" && <p className="text-red-600 font-medium">Booking failed. Try again ❌</p>}
-            </div>
+              <div className="sm:col-span-2">
+                {bookingStatus === "success" && <p className="text-green-600 font-medium">Booking confirmed! ✅</p>}
+                {bookingStatus === "error" && <p className="text-red-600 font-medium">Booking failed. Try again ❌</p>}
+              </div>
 
-            <div className="flex justify-end gap-3 mt-6">
+            </form>
+
+            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
               <button
-                className="px-4 py-2 bg-gray-300 rounded-lg hover:bg-gray-400 transition"
+                className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition w-full sm:w-auto"
                 onClick={() => setShowPopup(false)}
               >
                 Cancel
               </button>
               <button
-                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium w-full sm:w-auto"
                 onClick={confirmBooking}
               >
                 Confirm
@@ -203,17 +222,23 @@ export default function Booking() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {myBookings.map(b => (
               <div key={b.id} className="p-4 border rounded-2xl shadow hover:shadow-lg transition bg-white">
-                <h3 className="text-lg font-semibold text-gray-800">{b.counsellorName}</h3>
-                <p className="text-gray-600">📧 {b.email}</p>
-                <p className="text-gray-600">📞 {b.contact}</p>
-                <p className="text-gray-600">⏰ {new Date(b.time).toLocaleString()}</p>
-                <span className={`mt-2 inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                  b.status === "booked" ? "bg-blue-100 text-blue-700" :
-                  b.status === "completed" ? "bg-green-100 text-green-700" :
-                  "bg-gray-100 text-gray-700"
-                }`}>
-                  {b.status}
-                </span>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800">{b.counsellorName}</h3>
+                    <p className="text-gray-600">📧 {b.email}</p>
+                    <p className="text-gray-600">📞 {b.contact}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-gray-600">⏰ {b.time ? new Date(b.time).toLocaleString() : '—'}</p>
+                    <span className={`mt-2 inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                      b.status === "booked" ? "bg-blue-100 text-blue-700" :
+                      b.status === "completed" ? "bg-green-100 text-green-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>
+                      {b.status}
+                    </span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
+import userIcon from '../assets/mindsphere-logo.png';
 import { db, auth } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
 import CounsellorProfileForm from "../components/CounsellorProfileForm";
+import { API } from "../hooks/helper";
 
 const CounsellorDashboard = () => {
   const [appointments, setAppointments] = useState([]);
@@ -10,13 +12,18 @@ const CounsellorDashboard = () => {
   const [phqData, setPhqData] = useState([]);
   const [phqLoading, setPhqLoading] = useState(true);
   const [phqError, setPhqError] = useState(null);
+  // Modal state for showing PHQ entries per appointment
+  const [showPhqModal, setShowPhqModal] = useState(false);
+  const [activePhqEntries, setActivePhqEntries] = useState([]);
+  const [activeAppointment, setActiveAppointment] = useState(null);
 
   // Form state
+  // showProfileForm can be boolean or an object { open: true, allowEditIdentity: true }
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileLoadingState, setProfileLoadingState] = useState(true);
 
-  const BACKEND = "http://localhost:5000"; // Replace with your backend URL if different
+  const BACKEND = API;
 
   // Fetch counsellor info
   useEffect(() => {
@@ -115,6 +122,16 @@ const CounsellorDashboard = () => {
     fetchPhqData();
   }, []);
 
+  // Close modal on Escape key
+  useEffect(() => {
+    if (!showPhqModal) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setShowPhqModal(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [showPhqModal]);
+
   const getStatusColor = (status) => {
     switch (status) {
       case "booked": return "bg-blue-100 text-blue-700";
@@ -167,33 +184,45 @@ const CounsellorDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6">
-      <h1 className="text-2xl sm:text-3xl font-extrabold text-blue-700 mb-6">Counsellor Dashboard</h1>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-blue-700 mb-6">Counsellor Dashboard</h1>
 
       {/* Profile Form Modal */}
       {showProfileForm && (
         <CounsellorProfileForm
+          user={counsellor || {
+            name: auth.currentUser?.displayName || '',
+            email: auth.currentUser?.email || '',
+            specialization: ''
+          }}
           onSubmit={handleProfileSubmit}
           onCancel={handleProfileCancel}
           isLoading={profileLoading}
+          allowEditIdentity={typeof showProfileForm === 'object' ? !!showProfileForm.allowEditIdentity : false}
         />
       )}
 
       {/* Counsellor Info */}
       {counsellor && (
-        <div className="bg-white shadow-lg rounded-2xl p-6 mb-10">
+  <div className="bg-white shadow-lg rounded-2xl p-4 sm:p-6 mb-8">
             <div className="flex flex-col md:flex-row items-start gap-6">
-              {counsellor.image && (
+              <div className="w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-2 border-blue-100 overflow-hidden bg-blue-50 flex items-center justify-center mx-auto md:mx-0">
                 <img
-                  src={counsellor.image}
-                  alt={counsellor.name}
-                  className="w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full border-2 border-blue-100 object-cover"
+                  src={counsellor.image || userIcon}
+                  alt={counsellor.name || 'Counsellor'}
+                  className="w-full h-full object-cover"
+                  onError={(e) => { /* fall back to bundled logo if provided image fails to load */
+                    // avoid infinite loop if userIcon also errors
+                    e.currentTarget.onerror = null;
+                    e.currentTarget.src = userIcon;
+                  }}
                 />
-              )}
+              </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-800 mb-4">{counsellor.name}</h2>
+              <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-gray-800 mb-3 text-center md:text-left">{counsellor.name}</h2>
               
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 text-sm sm:text-base">
                 <div>
                   <p className="text-gray-600 mb-2"><span className="font-medium">Specialization:</span> {counsellor.specialization}</p>
                   <p className="text-gray-600 mb-2"><span className="font-medium">📧 Email:</span> {counsellor.email}</p>
@@ -221,23 +250,27 @@ const CounsellorDashboard = () => {
 
               {counsellor.address && (
                 <div className="mt-4">
-                  <p className="text-gray-600"><span className="font-medium">Address:</span> {counsellor.address}</p>
+                  <p className="text-gray-600 text-sm sm:text-base"><span className="font-medium">Address:</span> {counsellor.address}</p>
                 </div>
               )}
 
               {counsellor.careerInformation && (
                 <div className="mt-4">
-                  <p className="text-gray-600"><span className="font-medium">Career Information:</span></p>
-                  <p className="text-gray-600 mt-1">{counsellor.careerInformation}</p>
+                  <p className="text-gray-600 text-sm sm:text-base"><span className="font-medium">Career Information:</span></p>
+                  <p className="text-gray-600 text-sm sm:text-base mt-1">{counsellor.careerInformation}</p>
                 </div>
               )}
 
               {counsellor.bio && (
                 <div className="mt-4">
-                  <p className="text-gray-600"><span className="font-medium">Bio:</span></p>
-                  <p className="text-gray-600 mt-1">{counsellor.bio}</p>
+                  <p className="text-gray-600 text-sm sm:text-base"><span className="font-medium">Bio:</span></p>
+                  <p className="text-gray-600 text-sm sm:text-base mt-1">{counsellor.bio}</p>
                 </div>
               )}
+              <div className="mt-4 flex flex-col sm:flex-row sm:items-center gap-3">
+                {/* Open profile form for editing profile details, but identity fields remain read-only */}
+                <button onClick={() => setShowProfileForm(true)} className="px-4 py-2 rounded bg-blue-50 text-blue-700 w-full sm:w-auto text-center text-sm sm:text-base">Edit profile</button>
+              </div>
             </div>
           </div>
         </div>
@@ -245,21 +278,21 @@ const CounsellorDashboard = () => {
 
       {/* Booking Appointments Section */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-blue-700 mb-4">Booking Appointments</h2>
+  <h2 className="text-xl sm:text-2xl font-bold text-blue-700 mb-4">Booking Appointments</h2>
         {appointments.length === 0 ? (
-          <p className="text-gray-500 text-center py-10 text-lg">No booked appointments yet.</p>
+          <p className="text-gray-500 text-center py-10 text-base sm:text-lg">No booked appointments yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {appointments.map((appt) => (
-              <div key={appt.id} className="bg-white shadow-lg rounded-2xl p-4 sm:p-5 hover:shadow-2xl transition duration-300 w-full">
-                <div className="flex justify-between items-center mb-3">
-                  <h3 className="text-xl font-semibold text-gray-800">{appt.userName}</h3>
+              <div key={appt.id} className="bg-white shadow-lg rounded-2xl p-4 sm:p-5 lg:p-6 hover:shadow-2xl transition duration-300 w-full">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
+                  <h3 className="text-lg sm:text-xl font-semibold text-gray-800">{appt.userName}</h3>
                   <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(appt.status)}`}>
                     {appt.status}
                   </span>
                 </div>
-                <div className="text-gray-600 text-sm space-y-1 break-words">
-                  {appt.email && <p>📧 {appt.email}</p>}
+                <div className="text-gray-600 text-sm sm:text-base space-y-1 break-words">
+                  {appt.email && <p className="truncate">📧 {appt.email}</p>}
                   {appt.contact && <p>📞 {appt.contact}</p>}
                   <p>⏰ {new Date(appt.time).toLocaleString()}</p>
                   {appt.createdAt && (
@@ -267,47 +300,83 @@ const CounsellorDashboard = () => {
                       Booked on: {appt.createdAt.toDate().toLocaleString()}
                     </p>
                   )}
+                  
+                  <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // find PHQ entries for this appointment's email
+                        const email = (appt.email || appt.user_email || appt.userEmail || '').toString().toLowerCase();
+                        const entries = phqData.filter(p => (p.user_email || p.userEmail || '').toString().toLowerCase() === email);
+                        setActivePhqEntries(entries);
+                        setActiveAppointment(appt);
+                        setShowPhqModal(true);
+                      }}
+                      className="px-4 py-2 rounded bg-blue-50 text-blue-700 text-sm sm:text-base hover:bg-blue-100 w-full sm:w-auto text-center"
+                    >
+                      View PHQ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { /* future: navigate to appointment details */ }}
+                      className="px-4 py-2 rounded bg-gray-50 text-gray-700 text-sm sm:text-base hover:bg-gray-100 w-full sm:w-auto text-center"
+                    >
+                      Details
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
+      {/* PHQ modal (per-appointment) */}
+      {showPhqModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowPhqModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">PHQ-9 Submissions for {activeAppointment?.userName || activeAppointment?.email || 'Client'}</h3>
+                <p className="text-sm text-gray-500">Appointment: {activeAppointment?.time ? new Date(activeAppointment.time).toLocaleString() : 'Unknown'}</p>
+              </div>
+              <div>
+                <button onClick={() => setShowPhqModal(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              </div>
+            </div>
 
-      {/* PHQ-9 Submissions Section */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-blue-700 mb-4">PHQ-9 Submissions</h2>
-
-        {phqLoading ? (
-          <p className="text-gray-600">Loading PHQ-9 submissions...</p>
-        ) : phqError ? (
-          <p className="text-red-600">Error: {phqError}</p>
-        ) : phqData.length === 0 ? (
-          <p className="text-gray-500 text-center py-6">No PHQ-9 submissions yet.</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {phqData.map((p) => {
-              const time = p.timestamp ? new Date(p.timestamp).toLocaleString() : 'Unknown';
-              const answers = Array.isArray(p.answers) ? p.answers.join(', ') : '';
-              return (
-                <div key={p.id || p.user_email + '-' + time} className="bg-white shadow-lg rounded-2xl p-5 hover:shadow-2xl transition duration-300">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-semibold text-gray-800">{p.user_email || 'Unknown'}</h3>
-                    <span className="text-sm text-gray-500">{time}</span>
-                  </div>
-                  <p className="text-sm text-gray-700">Score: <strong>{p.totalScore ?? p.total_score ?? '—'}</strong></p>
-                  <p className="text-sm text-gray-700">Severity: <strong>{p.severity || 'Unknown'}</strong></p>
-                  {answers && (
-                    <div className="mt-3 text-sm text-gray-600">
-                      <div className="font-medium text-gray-700 mb-1">Answers</div>
-                      <div className="text-xs bg-gray-50 p-3 rounded-md">{answers}</div>
-                    </div>
-                  )}
+            <div className="mt-4">
+              {phqLoading ? (
+                <p className="text-gray-600">Loading PHQ-9 submissions...</p>
+              ) : activePhqEntries.length === 0 ? (
+                <p className="text-gray-500">No PHQ-9 submissions from this client.</p>
+              ) : (
+                <div className="space-y-4">
+                  {activePhqEntries.map((p) => {
+                    const time = p.timestamp ? new Date(p.timestamp).toLocaleString() : 'Unknown';
+                    const answers = Array.isArray(p.answers) ? p.answers.join(', ') : '';
+                    return (
+                      <div key={p.id || p.user_email + '-' + time} className="bg-gray-50 border rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-sm font-medium">{p.user_email || 'Unknown'}</div>
+                          <div className="text-xs text-gray-500">{time}</div>
+                        </div>
+                        <div className="text-sm text-gray-700">Score: <strong>{p.totalScore ?? p.total_score ?? '—'}</strong></div>
+                        <div className="text-sm text-gray-700">Severity: <strong>{p.severity || 'Unknown'}</strong></div>
+                        {answers && (
+                          <div className="mt-2 text-sm text-gray-600">
+                            <div className="font-medium text-gray-700 mb-1">Answers</div>
+                            <div className="text-xs bg-white p-3 rounded-md border">{answers}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
+              )}
+            </div>
           </div>
-        )}
+        </div>
+      )}
       </div>
     </div>
   );

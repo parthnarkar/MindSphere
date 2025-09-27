@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 
-const CounsellorProfileForm = ({ onSubmit, onCancel, isLoading = false }) => {
-  const [form, setForm] = useState({
-    name: '',
+const CounsellorProfileForm = ({ user = {}, onSubmit, onCancel, isLoading = false, allowEditIdentity = false }) => {
+  const [form, setForm] = useState(() => ({
+    name: user.name || '',
     number: '',
-    email: '',
-    specialization: '',
+    email: user.email || '',
+    specialization: user.specialization || '',
     experience: '',
     address: '',
     careerInformation: '',
@@ -14,7 +14,19 @@ const CounsellorProfileForm = ({ onSubmit, onCancel, isLoading = false }) => {
     consultationFee: '',
     availability: '',
     bio: ''
-  });
+  }));
+
+  // Keep form in sync if parent provides user after initial render
+  React.useEffect(() => {
+    if (user) {
+      setForm(prev => ({
+        ...prev,
+        name: user.name || prev.name,
+        email: user.email || prev.email,
+        specialization: user.specialization || prev.specialization,
+      }));
+    }
+  }, [user]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -31,28 +43,120 @@ const CounsellorProfileForm = ({ onSubmit, onCancel, isLoading = false }) => {
     onSubmit && onSubmit(form);
   };
 
+  // Close on Escape key and allow backdrop click to cancel
+  React.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') onCancel && onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <form onSubmit={submit} className="bg-white rounded-xl shadow-xl max-w-2xl w-full p-6">
-        <h3 className="text-xl font-bold mb-4">Complete your counsellor profile</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <input name="name" value={form.name} onChange={handleChange} placeholder="Full name" className="border p-2 rounded" />
-          <input name="number" value={form.number} onChange={handleChange} placeholder="Phone number" className="border p-2 rounded" />
-          <input name="email" value={form.email} onChange={handleChange} placeholder="Email (optional)" className="border p-2 rounded" />
-          <input name="specialization" value={form.specialization} onChange={handleChange} placeholder="Specialization" className="border p-2 rounded" />
-          <input name="experience" value={form.experience} onChange={handleChange} placeholder="Experience (years)" className="border p-2 rounded" />
-          <input name="consultationFee" value={form.consultationFee} onChange={handleChange} placeholder="Consultation Fee" className="border p-2 rounded" />
-          <input name="languages" value={form.languages} onChange={handleChange} placeholder="Languages (comma separated)" className="border p-2 rounded md:col-span-2" />
-          <input name="qualifications" value={form.qualifications} onChange={handleChange} placeholder="Qualifications" className="border p-2 rounded md:col-span-2" />
-          <input name="availability" value={form.availability} onChange={handleChange} placeholder="Availability" className="border p-2 rounded md:col-span-2" />
-          <input name="address" value={form.address} onChange={handleChange} placeholder="Address" className="border p-2 rounded md:col-span-2" />
-          <textarea name="careerInformation" value={form.careerInformation} onChange={handleChange} placeholder="Career Information" className="border p-2 rounded md:col-span-2" />
-          <textarea name="bio" value={form.bio} onChange={handleChange} placeholder="Short bio" className="border p-2 rounded md:col-span-2" />
+    <div
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center bg-black/40 p-4 overflow-y-auto"
+      onClick={onCancel}
+    >
+      <form
+        onSubmit={submit}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Counsellor profile form"
+        className="bg-white rounded-xl shadow-xl w-full max-w-3xl p-4 sm:p-6 mx-2 sm:mx-4 box-border max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-lg sm:text-xl font-bold mb-2">Complete your counsellor profile</h3>
+          <button type="button" aria-label="Close profile form" onClick={onCancel} className="ml-auto text-gray-500 hover:text-gray-700 p-1 rounded focus:outline-none">
+            ×
+          </button>
         </div>
 
-        <div className="mt-4 flex items-center justify-end gap-3">
-          <button type="button" onClick={onCancel} className="px-4 py-2 rounded bg-gray-100">Cancel</button>
-          <button type="submit" disabled={isLoading} className="px-4 py-2 rounded bg-blue-600 text-white">{isLoading ? 'Saving...' : 'Save profile'}</button>
+        {/* Identity block - read-only or editable depending on allowEditIdentity */}
+  <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+          {allowEditIdentity ? (
+            <>
+              <div>
+                <label className="text-xs text-gray-500">Name</label>
+                <input name="name" value={form.name} onChange={handleChange} className="border p-2 rounded w-full block mt-1 text-sm sm:text-base" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Email</label>
+                <input name="email" value={form.email} onChange={handleChange} className="border p-2 rounded w-full block mt-1 text-sm sm:text-base" />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500">Specialization</label>
+                <input name="specialization" value={form.specialization} onChange={handleChange} className="border p-2 rounded w-full block mt-1 text-sm sm:text-base" />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="col-span-1 sm:col-span-1">
+                <label className="text-xs text-gray-500">Name</label>
+                <div className="font-medium text-gray-800 truncate">{form.name || '—'}</div>
+              </div>
+              <div className="col-span-1 sm:col-span-1">
+                <label className="text-xs text-gray-500">Email</label>
+                <div className="font-medium text-gray-800 truncate">{form.email || '—'}</div>
+              </div>
+              <div className="col-span-1 sm:col-span-1">
+                <label className="text-xs text-gray-500">Specialization</label>
+                <div className="font-medium text-gray-800 truncate">{form.specialization || '—'}</div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="text-xs text-gray-500">Phone number</label>
+            <input name="number" value={form.number} onChange={handleChange} placeholder="Phone number" className="border p-2 rounded w-full block mt-1 text-sm sm:text-base" autoFocus />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500">Experience (years)</label>
+            <input name="experience" value={form.experience} onChange={handleChange} placeholder="Experience (years)" className="border p-2 rounded w-full block mt-1" />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500">Consultation Fee</label>
+            <input name="consultationFee" value={form.consultationFee} onChange={handleChange} placeholder="Consultation Fee" className="border p-2 rounded w-full block mt-1" />
+          </div>
+
+          <div>
+            <label className="text-xs text-gray-500">Languages</label>
+            <input name="languages" value={form.languages} onChange={handleChange} placeholder="Languages (comma separated)" className="border p-2 rounded w-full block mt-1" />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="text-xs text-gray-500">Qualifications</label>
+            <input name="qualifications" value={form.qualifications} onChange={handleChange} placeholder="Qualifications" className="border p-2 rounded w-full block mt-1" />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="text-xs text-gray-500">Availability</label>
+            <input name="availability" value={form.availability} onChange={handleChange} placeholder="Availability" className="border p-2 rounded w-full block mt-1" />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="text-xs text-gray-500">Address</label>
+            <input name="address" value={form.address} onChange={handleChange} placeholder="Address" className="border p-2 rounded w-full block mt-1" />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="text-xs text-gray-500">Career Information</label>
+            <textarea name="careerInformation" value={form.careerInformation} onChange={handleChange} placeholder="Career Information" className="border p-2 rounded w-full block mt-1 min-h-[80px] sm:min-h-[120px] resize-vertical text-sm sm:text-base" />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label className="text-xs text-gray-500">Short bio</label>
+            <textarea name="bio" value={form.bio} onChange={handleChange} placeholder="Short bio" className="border p-2 rounded w-full block mt-1 min-h-[70px] sm:min-h-[100px] resize-vertical text-sm sm:text-base" />
+          </div>
+        </div>
+
+        <div className="mt-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-3">
+          <button type="button" onClick={onCancel} className="px-4 py-2 rounded bg-gray-100 w-full sm:w-auto">Cancel</button>
+          <button type="submit" disabled={isLoading} className="px-4 py-2 rounded bg-blue-600 text-white w-full sm:w-auto">{isLoading ? 'Saving...' : 'Save profile'}</button>
         </div>
       </form>
     </div>

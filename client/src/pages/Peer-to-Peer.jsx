@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import useSocket from '../hooks/useSocket';
+import io from 'socket.io-client';
 import utils from '../utils';
 
 // Mock user data - in real app, this would come from authentication
@@ -10,6 +10,9 @@ const mockUser = {
   role: 'student', // student, counselor, admin
   avatar: 'https://via.placeholder.com/40'
 };
+
+// Socket backend URL (per your request). Falls back to localhost for dev.
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
 
 // Crisis Resources Sidebar Component
 const CrisisResourcesSidebar = () => {
@@ -202,8 +205,10 @@ const PeerToPeer = () => {
   const [formErrors, setFormErrors] = useState([]);
 
   // WebSocket connection
-  const socketConnection = useSocket();
-  const { isConnected, onlineUsers } = socketConnection;
+  // inline socket client (replaces useSocket hook)
+  const socketRef = useRef(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [onlineUsers, setOnlineUsers] = useState([]);
 
   // Typing timeout ref
   const typingTimeoutRef = useRef(null);
@@ -211,14 +216,68 @@ const PeerToPeer = () => {
   // Initialize data and WebSocket listeners
   useEffect(() => {
     loadInitialData();
-    setupSocketListeners();
+    // initialize socket and attach listeners
+    try {
+      socketRef.current = io(SOCKET_URL, { transports: ['polling', 'websocket'] });
+    } catch (e) {
+      console.warn('Socket init failed', e);
+      socketRef.current = null;
+    }
 
+    if (socketRef.current) {
+      const s = socketRef.current;
+      s.on('connect', () => {
+        setIsConnected(true);
+        s.emit('user_join', { id: user.id, name: user.name });
+        // ask for initial posts for the selected category
+        s.emit('get_initial_posts', { category: selectedCategory });
+      });
+
+      s.on('disconnect', () => setIsConnected(false));
+
+      s.on('users_online', (users) => setOnlineUsers(users || []));
+
+      // wire up the same listeners setupSocketListeners used to register
+      s.on('initial_posts', (items) => setPosts(items || []));
+      s.on('post_created', (post) => setPosts(prev => [post, ...prev]));
+      s.on('post_updated', ({ postId, updates }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, ...updates } : post)));
+      s.on('post_deleted', ({ postId }) => setPosts(prev => prev.filter(post => post.id !== postId)));
+
+      s.on('reply_added', ({ postId, reply }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: [...(post.replies||[]), reply] } : post)));
+      s.on('reply_updated', ({ postId, replyId, updates }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: (post.replies||[]).map(r => r.id === replyId ? { ...r, ...updates } : r) } : post)));
+      s.on('vote_updated', ({ postId, replyId, upvotes }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: (post.replies||[]).map(r => r.id === replyId ? { ...r, upvotes } : r) } : post)));
+
+      s.on('user_typing', ({ userId, userName, postId }) => {
+        // add typing user for specific post, avoid duplicates
+        setTypingUsers(prev => {
+          const list = prev[postId] || [];
+          if (list.find(u => u.userId === userId)) return prev;
+          return { ...prev, [postId]: [...list, { userId, userName }] };
+        });
+      });
+      s.on('user_stopped_typing', ({ userId, postId }) => {
+        setTypingUsers(prev => ({ ...prev, [postId]: (prev[postId] || []).filter(u => u.userId !== userId) }));
+      });
+
+      s.on('post_pinned', ({ postId, isPinned }) => {
+        setPosts(prev => prev.map(post => post.id === postId ? { ...post, isPinned } : post));
+      });
+
+      s.on('reply_verified', ({ postId, replyId, isVerified }) => {
+        setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: (post.replies||[]).map(r => r.id === replyId ? { ...r, isVerified } : r) } : post));
+      });
+    }
     return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      try { if (socketRef.current) socketRef.current.disconnect(); } catch(e) {}
+      socketRef.current = null;
     };
   }, []);
+
+  // re-request posts when category changes
+  useEffect(() => {
+    try { socketRef.current && socketRef.current.emit('get_initial_posts', { category: selectedCategory }); } catch (e) {}
+  }, [selectedCategory]);
 
   // Load initial data
   const loadInitialData = async () => {
@@ -428,8 +487,8 @@ const PeerToPeer = () => {
       setNewPost({ title: '', content: '', category: 'General', anonymous: false });
       setShowCreatePost(false);
 
-      // Emit to WebSocket for real-time updates
-      socketConnection.createPost(post);
+  // Emit to WebSocket for real-time updates
+  try { socketRef.current && socketRef.current.emit('create_post', post); } catch (e) { console.warn('emit create_post failed', e); }
     } catch (err) {
       setError(utils.formatError(err));
     } finally {
@@ -460,11 +519,9 @@ const PeerToPeer = () => {
       }));
 
       // In production, call API
-      if (replyId) {
-        socketConnection.upvoteReply(postId, replyId);
-      } else {
-        socketConnection.upvotePost(postId);
-      }
+      try {
+        if (socketRef.current) socketRef.current.emit('upvote', { postId, replyId });
+      } catch (e) { console.warn('emit upvote failed', e); }
     } catch (err) {
       // Revert optimistic update on error
       setPosts(prev => prev.map(post => {
@@ -533,13 +590,11 @@ const PeerToPeer = () => {
       setActiveReplyTo(null);
 
       // Stop typing indicator
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      socketConnection.stopTyping(postId);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      try { socketRef.current && socketRef.current.emit('typing_stop', { postId }); } catch (e) {}
 
       // Emit new reply for real-time updates
-      socketConnection.addReply(postId, reply);
+      try { socketRef.current && socketRef.current.emit('add_reply', { postId, reply }); } catch (e) { console.warn('emit add_reply failed', e); }
     } catch (err) {
       setError(utils.formatError(err));
     }
@@ -549,8 +604,8 @@ const PeerToPeer = () => {
   const handleReplyTyping = (postId, content) => {
     setReplyContent(content);
     
-    // Start typing indicator
-    socketConnection.startTyping(postId);
+  // Start typing indicator
+  try { socketRef.current && socketRef.current.emit('typing_start', { postId }); } catch (e) {}
     
     // Clear existing timeout
     if (typingTimeoutRef.current) {
@@ -559,7 +614,7 @@ const PeerToPeer = () => {
     
     // Stop typing after 3 seconds of inactivity
     typingTimeoutRef.current = setTimeout(() => {
-      socketConnection.stopTyping(postId);
+      try { socketRef.current && socketRef.current.emit('typing_stop', { postId }); } catch (e) {}
     }, 3000);
   };
 
@@ -577,7 +632,7 @@ const PeerToPeer = () => {
 
       // In production, call API
       
-      socketConnection.pinPost(postId);
+  try { socketRef.current && socketRef.current.emit('pin_post', { postId }); } catch (e) { console.warn('emit pin_post failed', e); }
     } catch (err) {
       // Revert optimistic update on error
       setPosts(prev => prev.map(post => 
@@ -611,7 +666,7 @@ const PeerToPeer = () => {
 
       // In production, call API
       
-      socketConnection.verifyReply(postId, replyId);
+  try { socketRef.current && socketRef.current.emit('verify_reply', { postId, replyId }); } catch (e) { console.warn('emit verify_reply failed', e); }
     } catch (err) {
       // Revert optimistic update on error
       setPosts(prev => prev.map(post => {
@@ -649,7 +704,7 @@ const PeerToPeer = () => {
 
       // In production, call API
       
-      socketConnection.reportContent(fullReportData);
+  try { socketRef.current && socketRef.current.emit('report_content', fullReportData); } catch (e) { console.warn('emit report_content failed', e); }
       
       setShowReportModal(false);
       setReportTarget(null);

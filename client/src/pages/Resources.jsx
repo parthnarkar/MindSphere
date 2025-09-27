@@ -91,7 +91,7 @@ export default function Resources() {
         searchTasks.push(fetch(booksUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))));
 
         // Local API resources
-        const base = API || "http://localhost:5000";
+        const base = API;
         const localUrl = `${base.replace(/\/$/, "")}/api/resources?query=${encodeURIComponent(q)}`;
         searchTasks.push(fetch(localUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))).catch(() => ({ resources: [] })));
 

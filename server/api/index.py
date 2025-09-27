@@ -54,25 +54,65 @@ def api_chat():
 	if request.method == 'OPTIONS':
 		return '', 204
 	data = request.get_json() or {}
+	# Ignore any client-side intent hints; detect on server for a single source of truth
 	user_message = data.get('message') or data.get('text')
 	if not user_message:
 		return jsonify({"error": "Message is required"}), 400
-	if helpers.detect_crisis(user_message):
-		return jsonify({"response": "It sounds like you may be in crisis. Please contact local emergency services or a crisis hotline right away.", "escalate": True})
-	if not helpers.looks_student_mh_related(user_message):
-		# Ask a brief clarifying question instead of flat rejection
-		clarifying = (
-			"I want to help, but I specialize in student mental health topics (stress, anxiety, sleep, motivation, relationships). "
-			"Could you tell me a bit more about what's going on or whether this is about how you're feeling?"
+	# Run server-side intent detection first
+	detected = helpers.detect_intent(user_message)
+
+	# Crisis handling: ask the model to generate the crisis-aware reply so no hardcoded text is returned
+	if detected.get('intent') == 'crisis' or helpers.detect_crisis(user_message):
+		prompt = (
+			"You are a compassionate, safety-focused support assistant. The user message appears to indicate a crisis. "
+			"Provide a short, empathetic response that urges the user to seek immediate help and lists crisis resources. "
+			"Do NOT provide medical advice beyond recommending contacting emergency services or a crisis hotline."
+			f"\nUser message: {user_message}"
 		)
-		return jsonify({"response": clarifying})
-	prompt = helpers.build_coping_prompt(user_message)
+		try:
+			text = modelutils.generate_coping_text(prompt)
+		except Exception as e:
+			return jsonify({"error": "Model generation failed", "details": str(e)}), 500
+		return jsonify({"response": text, "escalate": True, "intent": "crisis", "intentConfidence": detected.get('confidence', 1.0)})
+
+	# Topic gate: if message isn't clearly student MH-related, ask the model to craft a clarifying question
+	if not helpers.looks_student_mh_related(user_message):
+		prompt = (
+			"You are a supportive assistant. The user message may be outside the scope of student mental health. "
+			"Please generate one brief clarifying question that asks whether the user is discussing how they are feeling or a different topic. "
+			f"\nUser message: {user_message}"
+		)
+		try:
+			text = modelutils.generate_coping_text(prompt)
+		except Exception as e:
+			return jsonify({"error": "Model generation failed", "details": str(e)}), 500
+		return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence')})
+
+	# Normal flow: include detected intent in prompt, ask model for coping/strategies
+	prompt = helpers.build_coping_prompt(f"[intent={detected.get('intent')}] {user_message}")
 	try:
 		text = modelutils.generate_coping_text(prompt)
 	except Exception as e:
 		# Surface the model error to the client (5xx). Caller requested strict model-only behavior.
 		return jsonify({"error": "Model generation failed", "details": str(e)}), 500
-	return jsonify({"response": text, "escalate": False})
+	return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence')})
+
+
+
+@bp.route('/api/chat/init', methods=['GET'])
+def api_chat_init():
+	"""Return a model-generated opening message for the chatbot (no hardcoded content)."""
+	# Construct a prompt instructing the model to produce a concise friendly greeting
+	prompt = (
+		"You are an anonymous, stigma-free support assistant talking to a student. "
+		"Provide a short, welcoming opening message (one or two sentences) that invites the user to share how they're feeling. "
+		"Avoid medical claims and do not reference internal system names."
+	)
+	try:
+		text = modelutils.generate_coping_text(prompt)
+	except Exception as e:
+		return jsonify({"error": "Model generation failed", "details": str(e)}), 500
+	return jsonify({"response": text})
 
 
 @bp.route('/api/phq9', methods=['GET', 'POST', 'OPTIONS'])
