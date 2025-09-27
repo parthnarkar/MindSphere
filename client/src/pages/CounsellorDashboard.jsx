@@ -11,6 +11,11 @@ const CounsellorDashboard = () => {
   const [phqLoading, setPhqLoading] = useState(true);
   const [phqError, setPhqError] = useState(null);
 
+  // Form state
+  const [showProfileForm, setShowProfileForm] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileLoadingState, setProfileLoadingState] = useState(true);
+
   const BACKEND = "http://localhost:5000"; // Replace with your backend URL if different
 
   // Fetch counsellor info
