@@ -4,9 +4,21 @@ import io from 'socket.io-client';
 
 const resolveSocketUrl = () => {
   const URL = import.meta.env.VITE_SOCKET_URL;
-  
 
-  return `${URL}`; // Fallback to env variable or default
+  // If an explicit env var is provided and not the literal string 'undefined', use it.
+  if (URL && URL !== 'undefined') return URL;
+
+  // Fallback: construct a backend URL on the same host using port 5000 (dev default).
+  // Use https when page is https.
+  try {
+    const proto = window.location.protocol === 'https:' ? 'https' : 'http';
+    const host = window.location.hostname || 'localhost';
+    const port = '5000'; // backend default port
+    return `${proto}://${host}:${port}`;
+  } catch (e) {
+    // If window is not available for some reason, fall back to localhost
+    return 'http://localhost:5000';
+  }
 };
 
 const useSocket = (serverUrl = resolveSocketUrl()) => {
@@ -16,10 +28,20 @@ const useSocket = (serverUrl = resolveSocketUrl()) => {
 
   useEffect(() => {
     // Initialize socket connection
-    socketRef.current = io(serverUrl, {
-      transports: ['websocket', 'polling'],
-      timeout: 20000,
-    });
+    if (!serverUrl || serverUrl === 'undefined') {
+      console.warn('useSocket: invalid serverUrl, skipping socket init:', serverUrl);
+      return;
+    }
+
+    try {
+      socketRef.current = io(serverUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 20000,
+      });
+    } catch (err) {
+      console.error('useSocket: failed to initialize socket.io client', err);
+      return;
+    }
 
     const socket = socketRef.current;
 

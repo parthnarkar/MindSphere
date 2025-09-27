@@ -91,6 +91,14 @@ function App() {
 
   if (loading) return <div>Loading...</div>;
 
+  // Route component that opens the PHQ9 modal instead of rendering Screening page
+  function ScreenModalRoute() {
+    useEffect(() => {
+      if (user && user.role !== "counsellor") setShowPhq9(true);
+    }, []);
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       {/* Header */}
@@ -108,12 +116,6 @@ function App() {
                     <Link to="/CounsellorDashboard" className="hover:text-blue-500 transition">
                       Dashboard
                     </Link>
-                    <Link to="/appointments" className="hover:text-blue-500 transition">
-                      Booked Appointments
-                    </Link>
-                    <Link to="/clients" className="hover:text-blue-500 transition">
-                      Clients
-                    </Link>
                   </>
                 ) : (
                   <>
@@ -123,20 +125,14 @@ function App() {
                     <Link to="/peer-to-peer" className="hover:text-blue-500 transition">
                       Peer-to-Peer
                     </Link>
-                    <Link to="/screening" className="hover:text-blue-500 transition">
+                    <button onClick={() => setShowPhq9(true)} className="hover:text-blue-500 cursor-pointer transition text-left">
                       Screening
-                    </Link>
+                    </button>
                     <Link to="/booking" className="hover:text-blue-500 transition">
                       Booking
                     </Link>
-                    <Link to="/forum" className="hover:text-blue-500 transition">
-                      Forum
-                    </Link>
                     <Link to="/resources" className="hover:text-blue-500 transition">
                       Resources
-                    </Link>
-                    <Link to="/admin" className="hover:text-blue-500 transition">
-                      Admin
                     </Link>
                   </>
                 )}
@@ -166,7 +162,7 @@ function App() {
       )}
 
 
-      <main className="max-w-4xl mx-auto p-4">
+      <main className="max-w-8xl mx-auto p-4">
         <Routes>
           {/* Login / Redirect */}
           <Route
