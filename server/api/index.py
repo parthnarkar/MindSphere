@@ -76,10 +76,48 @@ def api_chat():
 	return jsonify({"response": text, "escalate": False})
 
 
-@bp.route('/api/phq9', methods=['POST', 'OPTIONS'])
+@bp.route('/api/phq9', methods=['GET', 'POST', 'OPTIONS'])
 def phq9_post():
+	# Support GET for listing all PHQ-9 submissions and POST for adding a new one.
 	if request.method == 'OPTIONS':
 		return '', 204
+
+	if request.method == 'GET':
+		# Return all PHQ-9 documents (db-backed if available, otherwise in-memory)
+		coll = dbutils.get_phq9_collection()
+		docs = []
+		if coll is not None:
+			docs = list(coll.find().sort([('timestamp', -1)]).limit(2000))
+			out = []
+			for d in docs:
+				dd = dict(d)
+				if '_id' in dd:
+					try:
+						dd['id'] = str(dd.pop('_id'))
+					except Exception:
+						dd.pop('_id', None)
+				try:
+					if 'timestamp' in dd and hasattr(dd['timestamp'], 'isoformat'):
+						dd['timestamp'] = dd['timestamp'].isoformat()
+				except Exception:
+					pass
+				out.append(dd)
+			return jsonify({'phq9_responses': out})
+
+		# No DB configured -> return in-memory responses if present
+		out = []
+		if hasattr(dbutils, 'phq9_in_memory'):
+			for d in dbutils.phq9_in_memory:
+				dd = d.copy()
+				try:
+					if 'timestamp' in dd and hasattr(dd['timestamp'], 'isoformat'):
+						dd['timestamp'] = dd['timestamp'].isoformat()
+				except Exception:
+					pass
+				out.append(dd)
+		return jsonify({'phq9_responses': out})
+
+	# POST path (create new submission)
 	data = request.get_json() or {}
 	user_email = data.get('user_email')
 	answers = data.get('answers')
@@ -205,6 +243,88 @@ def api_clients():
 			return jsonify({'clients': docs})
 		sample = [{ 'id': 'sample-1', 'name': 'Student A', 'email': 'a@example.edu', 'submittedAt': '2025-01-01T10:00:00' }]
 		return jsonify({'clients': sample})
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+
+@bp.route('/api/clients-with-phq', methods=['GET'])
+def api_clients_with_phq():
+	"""Return clients with their latest PHQ-9 attached as `latest_phq` when available.
+
+	Behavior:
+	- If MongoDB configured: read clients from `clients` collection and query `phq9_responses`
+	  for the most recent PHQ per client (matching by lowercased email).
+	- If no clients collection is present, fall back to returning PHQ-only entries as client-like
+	  records (so the front-end always receives useful data).
+	"""
+	try:
+		phq_coll = dbutils.get_phq9_collection()
+		out = []
+		if getattr(dbutils, 'mongo_db', None) is not None:
+			coll = dbutils.mongo_db.get_collection('clients')
+			docs = list(coll.find().sort([('createdAt', -1)]).limit(200))
+			for d in docs:
+				cd = dict(d)
+				# normalize id/createdAt
+				if '_id' in cd:
+					try:
+						cd['id'] = str(cd.get('_id'))
+						del cd['_id']
+					except Exception:
+						cd.pop('_id', None)
+				if 'createdAt' in cd:
+					try:
+						cd['createdAt'] = cd['createdAt'].isoformat()
+					except Exception:
+						cd['createdAt'] = str(cd['createdAt'])
+
+				email = (cd.get('email') or cd.get('emailAddress') or '').lower()
+				latest = None
+				if phq_coll is not None and email:
+					try:
+						latest = phq_coll.find_one({'user_email': email}, sort=[('timestamp', -1)])
+					except Exception:
+						latest = None
+				if latest:
+					lp = dict(latest)
+					if '_id' in lp:
+						try:
+							lp['id'] = str(lp.pop('_id'))
+						except Exception:
+							lp.pop('_id', None)
+					try:
+						if 'timestamp' in lp and hasattr(lp['timestamp'], 'isoformat'):
+							lp['timestamp'] = lp['timestamp'].isoformat()
+					except Exception:
+						pass
+					cd['latest_phq'] = lp
+				out.append(cd)
+			return jsonify({'clients': out})
+
+		# No DB: try to synthesize clients from PHQ in-memory
+		if hasattr(dbutils, 'phq9_in_memory') and dbutils.phq9_in_memory:
+			# group by email and pick latest
+			grouped = {}
+			for p in dbutils.phq9_in_memory:
+				email = (p.get('user_email') or '').lower()
+				if not email:
+					continue
+				if email not in grouped or p.get('timestamp') > grouped[email].get('timestamp'):
+					grouped[email] = p
+			for email, p in grouped.items():
+				rec = {'id': f'phq-{email}', 'name': None, 'email': email, 'latest_phq': p}
+				# convert timestamp to iso if present
+				try:
+					if 'timestamp' in rec['latest_phq'] and hasattr(rec['latest_phq']['timestamp'], 'isoformat'):
+						rec['latest_phq']['timestamp'] = rec['latest_phq']['timestamp'].isoformat()
+				except Exception:
+					pass
+				out.append(rec)
+			return jsonify({'clients': out})
+
+		# Nothing to return
+		return jsonify({'clients': []})
 	except Exception as e:
 		return jsonify({'error': str(e)}), 500
 

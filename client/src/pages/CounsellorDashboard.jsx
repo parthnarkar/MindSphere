@@ -5,13 +5,11 @@ import { collection, query, where, getDocs, doc, getDoc } from "firebase/firesto
 const CounsellorDashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [counsellor, setCounsellor] = useState(null);
-  const [clients, setClients] = useState([]);
-  const [clientsLoading, setClientsLoading] = useState(true);
-  const [clientsError, setClientsError] = useState(null);
-
+  // PHQ-9 state
   const [phqData, setPhqData] = useState([]);
   const [phqLoading, setPhqLoading] = useState(true);
   const [phqError, setPhqError] = useState(null);
+
 
   const BACKEND = "http://localhost:5000"; // Replace with your backend URL if different
 
@@ -50,42 +48,13 @@ const CounsellorDashboard = () => {
     fetchAppointments();
   }, []);
 
-  // Fetch clients
-  useEffect(() => {
-    const fetchClients = async () => {
-      setClientsLoading(true);
-      try {
-        const res = await fetch(`${BACKEND}/api/clients`);
-        if (!res.ok) {
-          // try to parse JSON error body
-          let errText = `HTTP ${res.status}`;
-          try {
-            const errBody = await res.json();
-            errText = errBody.error || JSON.stringify(errBody);
-          } catch (e) {
-            const txt = await res.text();
-            errText = txt || errText;
-          }
-          throw new Error(errText);
-        }
-        const data = await res.json();
-        setClients(data.clients || []);
-      } catch (err) {
-        console.error("Error fetching clients:", err);
-        setClientsError(err.message || "Failed to load clients");
-      } finally {
-        setClientsLoading(false);
-      }
-    };
-    fetchClients();
-  }, []);
-
   // Fetch PHQ-9 results
   useEffect(() => {
     const fetchPhqData = async () => {
       setPhqLoading(true);
       try {
-        const res = await fetch(`${BACKEND}/api/phq9-results`);
+        // Server now exposes GET /api/phq9 which returns { phq9_responses: [...] }
+        const res = await fetch(`${BACKEND}/api/phq9`);
         if (!res.ok) {
           let errText = `HTTP ${res.status}`;
           try {
@@ -98,9 +67,21 @@ const CounsellorDashboard = () => {
           throw new Error(errText);
         }
         const data = await res.json();
-        // build a map by email for quick lookup and normalize emails
-        const arr = data.results || [];
-        const normalized = arr.map(r => ({ ...r, user_email: (r.user_email || "").toLowerCase() }));
+        const arr = data.phq9_responses || [];
+        // Normalize entries to the shape used in the UI
+        const computeSeverity = (score) => {
+          if (score >= 20) return 'Severe';
+          if (score >= 15) return 'Moderately severe';
+          if (score >= 10) return 'Moderate';
+          if (score >= 5) return 'Mild';
+          return 'Minimal';
+        };
+        const normalized = arr.map(r => ({
+          ...r,
+          user_email: (r.user_email || r.userEmail || '').toLowerCase(),
+          totalScore: r.total_score ?? r.totalScore ?? (Array.isArray(r.answers) ? r.answers.reduce((s,a)=>s+(Number(a)||0),0) : undefined),
+          severity: computeSeverity(r.total_score ?? r.totalScore ?? (Array.isArray(r.answers) ? r.answers.reduce((s,a)=>s+(Number(a)||0),0) : 0))
+        }));
         setPhqData(normalized);
       } catch (err) {
         console.error("Error fetching PHQ-9 results:", err);
@@ -178,34 +159,35 @@ const CounsellorDashboard = () => {
         )}
       </div>
 
-      {/* Clients Section with PHQ-9 Scores */}
+      {/* PHQ-9 Submissions Section */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-blue-700 mb-4">Submitted Clients</h2>
+        <h2 className="text-2xl font-bold text-blue-700 mb-4">PHQ-9 Submissions</h2>
 
-        {clientsLoading || phqLoading ? (
-          <p className="text-gray-600">Loading clients and PHQ-9 data...</p>
-        ) : clientsError || phqError ? (
-          <p className="text-red-600">
-            Error: {clientsError || phqError}
-          </p>
-        ) : clients.length === 0 ? (
-          <p className="text-gray-500 text-center py-6">No clients submitted yet.</p>
+        {phqLoading ? (
+          <p className="text-gray-600">Loading PHQ-9 submissions...</p>
+        ) : phqError ? (
+          <p className="text-red-600">Error: {phqError}</p>
+        ) : phqData.length === 0 ? (
+          <p className="text-gray-500 text-center py-6">No PHQ-9 submissions yet.</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {clients.map((c) => {
-              const email = (c.email || "").toLowerCase();
-              const phq = phqData.find(p => p.user_email === email);
+            {phqData.map((p) => {
+              const time = p.timestamp ? new Date(p.timestamp).toLocaleString() : 'Unknown';
+              const answers = Array.isArray(p.answers) ? p.answers.join(', ') : '';
               return (
-                <div key={c.id} className="bg-white shadow-lg rounded-2xl p-5 hover:shadow-2xl transition duration-300">
-                  <h3 className="text-xl font-semibold text-gray-800 mb-1">{c.name || c.fullName || 'Anonymous'}</h3>
-                  {c.email && <p className="text-sm text-gray-600 mb-1">📧 {c.email}</p>}
-                  {c.phone && <p className="text-sm text-gray-600 mb-1">📞 {c.phone}</p>}
-                  {phq && (
-                    <p className="text-sm text-gray-700 mt-2">
-                      PHQ-9 Score: {phq.totalScore} ({phq.severity})
-                    </p>
+                <div key={p.id || p.user_email + '-' + time} className="bg-white shadow-lg rounded-2xl p-5 hover:shadow-2xl transition duration-300">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-semibold text-gray-800">{p.user_email || 'Unknown'}</h3>
+                    <span className="text-sm text-gray-500">{time}</span>
+                  </div>
+                  <p className="text-sm text-gray-700">Score: <strong>{p.totalScore ?? p.total_score ?? '—'}</strong></p>
+                  <p className="text-sm text-gray-700">Severity: <strong>{p.severity || 'Unknown'}</strong></p>
+                  {answers && (
+                    <div className="mt-3 text-sm text-gray-600">
+                      <div className="font-medium text-gray-700 mb-1">Answers</div>
+                      <div className="text-xs bg-gray-50 p-3 rounded-md">{answers}</div>
+                    </div>
                   )}
-                  {c.details && <p className="text-sm text-gray-700 mt-2">{c.details}</p>}
                 </div>
               );
             })}

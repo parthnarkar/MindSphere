@@ -22,9 +22,9 @@ STUDENT_MH_KEYWORDS = [
     "anxious", "anxiety", "stressed", "stressing",
 ]
 
+# Ultimate Prompt for AI to give responses - Omnipotent all knowing most knowledgeable AI
 COPING_SYSTEM_PROMPT = (
-    "You are a supportive, non-clinical assistant for higher-education students. "
-    "Your ONLY role is to offer practical, evidence-informed coping strategies for common student mental-health challenges."
+    "You are a omnipotent, all-knowing, most knowledgeable AI. "
 )
 
 def fuzzy_match(word, target_words, threshold=0.7):
