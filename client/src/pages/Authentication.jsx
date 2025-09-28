@@ -95,8 +95,8 @@ const AuthPage = ({ defaultRole } = {}) => {
           console.warn('sessionStorage set failed', storageErr);
         }
       }
-      // Navigate to root which will redirect based on role
-      navigate('/');
+  // Navigate to chatbot after successful sign-in
+  navigate('/chatbot');
     } catch (err) {
       setError(err.message || "Login failed");
     }
@@ -181,8 +181,8 @@ const AuthPage = ({ defaultRole } = {}) => {
       if (result && result.firstLogin) {
         try { sessionStorage.setItem('firstLogin', '1'); } catch(e) { /* ignore */ }
       }
-      // Navigate to root which will redirect based on role
-      navigate('/');
+  // Navigate to chatbot after successful Google sign-in
+  navigate('/chatbot');
     } catch (err) {
       setError(err.message || "Google sign-in failed");
       

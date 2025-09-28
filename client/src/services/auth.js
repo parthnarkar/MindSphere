@@ -36,6 +36,28 @@ export const loginUser = async (email, password) => {
 
 // Register new user with role
 export const registerUser = async (email, password, role = "user", extra = {}) => {
+  // Prevent registration if an account for this email already exists with a different role
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', email));
+    const snaps = await getDocs(q);
+    if (!snaps.empty) {
+      const existing = snaps.docs[0].data();
+      // If the existing account was created via Google, block role changes
+      if (existing.provider === 'google' && existing.role && existing.role !== role) {
+        throw new Error(`This email is already registered via Google as '${existing.role}'. Please sign in using Google or contact support to change roles.`);
+      }
+      // If existing role differs, block to avoid accidental cross-role registration
+      if (existing.role && existing.role !== role) {
+        throw new Error(`This email is already registered as '${existing.role}'. Please sign in using that role or use a different email.`);
+      }
+    }
+  } catch (e) {
+    // If the query errored, surface to caller
+    if (e && e.message && e.message.startsWith('This email')) throw e;
+    // otherwise continue - don't block registration on transient Firestore errors
+  }
+
   const userCredential = await createUserWithEmailAndPassword(auth, email, password);
   const user = userCredential.user;
   await setDoc(doc(db, "users", user.uid), {
@@ -68,6 +90,10 @@ export const registerUser = async (email, password, role = "user", extra = {}) =
 // Google Sign In - Only for existing users with user role
 export const signInWithGoogle = async (role = "user") => {
   try {
+    // Disallow Google sign-in for non-user roles
+    if (role !== 'user') {
+      throw new Error('Google sign-in is only available for users. Please sign in using email/password for other roles.');
+    }
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
     
@@ -77,9 +103,18 @@ export const signInWithGoogle = async (role = "user") => {
     const querySnapshot = await getDocs(q);
     
     if (querySnapshot.empty) {
-      // Email not found in system - sign out and show error
-      await signOut(auth);
-      throw new Error("This email is not registered in our system. Please sign up first using email and password.");
+      // Email not found - create a new user doc for this Google account as role 'user'
+      // This allows Google sign-in to create user accounts directly.
+      const now = new Date();
+      await setDoc(doc(db, "users", user.uid), {
+        email: user.email,
+        name: user.displayName || null,
+        role: 'user',
+        provider: 'google',
+        createdAt: now,
+        lastLogin: now
+      });
+      return { user, role: 'user', signedUp: true, firstLogin: true };
     }
     
     // Check if the existing user has "user" role

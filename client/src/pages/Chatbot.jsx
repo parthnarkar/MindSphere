@@ -1,7 +1,29 @@
 import { useState, useRef, useEffect } from "react";
 import { API } from "../hooks/helper";
 
-export default function Chatbot() {
+// Shared UI classes for consistency
+const btnBase = 'px-3 py-2 rounded-md text-sm font-medium';
+const btnPrimary = `${btnBase} bg-blue-600 text-white hover:bg-blue-700`;
+const btnNeutral = `${btnBase} bg-gray-100 text-gray-800 hover:bg-gray-200`;
+const btnGhost = 'text-xs text-blue-600';
+
+// Format session name: Chat DD/MM/YY/HH/MM/SS
+function formatSessionName(s) {
+  const ts = s?.createdAt || s?.created_at || s?.created || s?.createdAtServer || null;
+  const d = ts ? new Date(ts) : null;
+  const pad = (n) => String(n).padStart(2, '0');
+  if (!d || isNaN(d.getTime())) {
+    // fallback: use current time
+    const now = new Date();
+    return `Chat ${pad(now.getDate())}/${pad(now.getMonth()+1)}/${String(now.getFullYear()).slice(-2)}/${pad(now.getHours())}/${pad(now.getMinutes())}/${pad(now.getSeconds())}`;
+  }
+  return `Chat ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${String(d.getFullYear()).slice(-2)}/${pad(d.getHours())}/${pad(d.getMinutes())}/${pad(d.getSeconds())}`;
+}
+
+export default function Chatbot({ user }) {
+  // if a user is provided (from App.jsx), scope sessions to their email
+  const email = user?.email ? String(user.email).toLowerCase() : null;
+  const sessionsQuery = email ? `?email=${encodeURIComponent(email)}` : '';
   const [messages, setMessages] = useState([
     // keep minimal initial welcome; the server can generate a more specific opener
     { from: "bot", text: "Hi — I'm a supportive assistant. How can I help today?" },
@@ -21,17 +43,19 @@ export default function Chatbot() {
     el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  // Load recent sessions once on mount
+  // Load recent sessions on mount and when the signed-in user (email) changes
   useEffect(() => {
-    fetch(`${API}/api/chat/session`)
+    // clear any active session when user changes
+    setActiveSession(null);
+    fetch(`${API}/api/chat/session${sessionsQuery}`)
       .then((r) => r.json())
       .then((data) => {
         const sess = data.sessions || [];
         setSessions(sess);
-        if (sess.length > 0 && !activeSession) setActiveSession(sess[0].id);
+        if (sess.length > 0) setActiveSession(sess[0].id);
       })
       .catch(() => setSessions([]));
-  }, []);
+  }, [email]);
 
   // Load messages for active session
   useEffect(() => {
@@ -41,15 +65,18 @@ export default function Chatbot() {
       ]);
       return;
     }
-    fetch(`${API}/api/chat/session/${activeSession}/messages`)
+    fetch(`${API}/api/chat/session/${activeSession}/messages${sessionsQuery}`)
       .then((r) => r.json())
       .then((data) => {
         if (Array.isArray(data.messages) && data.messages.length) {
           setMessages(data.messages.map((m) => ({ ...m })));
         } else {
-          setMessages([
+          // If server returned no messages, avoid overwriting local messages that may include
+          // the user's first message (which could still be pending persistence). Only set
+          // the default opener when there are no local messages.
+          setMessages((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : [
             { from: "bot", text: "Hi — I'm a supportive assistant. How can I help today?" },
-          ]);
+          ]));
         }
       })
       .catch(() => {
@@ -59,10 +86,11 @@ export default function Chatbot() {
 
   function createSession() {
     // Return a Promise that resolves with the created session id (or null)
+    const body = email ? { user_email: email } : {};
     return fetch(`${API}/api/chat/session`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -73,10 +101,11 @@ export default function Chatbot() {
           const opener = "Hi — I'm a supportive assistant. How can I help today?";
           const bot = { from: 'bot', text: opener, timestamp: new Date().toISOString() };
           setMessages([bot]);
-          // persist opener (best-effort)
+          // persist opener (best-effort) and include user_email when available
+          const persistBody = email ? { message: bot, user_email: email } : { message: bot };
           fetch(`${API}/api/chat/session/${data.session_id}/messages`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: bot })
+            body: JSON.stringify(persistBody)
           }).catch(() => {});
           return data.session_id;
         }
@@ -115,12 +144,13 @@ export default function Chatbot() {
     const user = { from: "user", text: userText, timestamp: new Date().toISOString() };
     setMessages((m) => [...m, user]);
 
-    // persist user message if we have a session id
+    // persist user message if we have a session id (include user_email when available)
     if (sessionId) {
+      const persistBody = email ? { message: user, user_email: email } : { message: user };
       fetch(`${API}/api/chat/session/${sessionId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: user }),
+        body: JSON.stringify(persistBody),
       }).catch(() => {});
     }
 
@@ -137,12 +167,13 @@ export default function Chatbot() {
       const bot = { from: "bot", text: replyText, timestamp: new Date().toISOString() };
       setMessages((m) => [...m, bot]);
 
-      // persist bot reply to session store as well
+      // persist bot reply to session store as well (include user_email when available)
       if (sessionId) {
+        const persistBody = email ? { message: bot, user_email: email } : { message: bot };
         fetch(`${API}/api/chat/session/${sessionId}/messages`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: bot }),
+          body: JSON.stringify(persistBody),
         }).catch(() => {});
       }
     } catch (err) {
@@ -175,21 +206,21 @@ export default function Chatbot() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 p-6">
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <div className="relative rounded-2xl shadow-lg overflow-hidden bg-white/10 backdrop-blur-sm border border-white/20">
         <div className="px-6 py-4 border-b flex items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-semibold">Support Chat</h2>
             <p className="text-sm text-gray-500 mt-1">Supportive strategies only — not a crisis or medical service. Chat history is saved per session.</p>
           </div>
-            <div className="flex items-center gap-2">
-            <button className="px-3 py-2 bg-gray-100 rounded" onClick={() => { setShowModal(true); fetch(`${API}/api/chat/session`).then(r=>r.json()).then(d=>setSessions(d.sessions||[])).catch(()=>{}); }}>History</button>
-            <button className="px-3 py-2 bg-gray-100 rounded" onClick={createSession} title="Create new session">New session</button>
+          <div className="flex items-center gap-2">
+            <button className={btnNeutral} onClick={() => { setShowModal(true); fetch(`${API}/api/chat/session${sessionsQuery}`).then(r=>r.json()).then(d=>setSessions(d.sessions||[])).catch(()=>{}); }}>History</button>
+            <button className={btnNeutral} onClick={createSession} title="Create new session">New session</button>
           </div>
         </div>
 
         <div className="md:flex">
           <div className="flex-1 p-4 sm:p-6">
-            <div ref={containerRef} className="h-[60vh] md:h-[56vh] overflow-y-auto space-y-4 bg-gray-50 p-4 rounded-lg border">
+            <div ref={containerRef} className="h-[60vh] md:h-[56vh] overflow-y-auto space-y-4 bg-transparent p-4 rounded-lg">
               {messages.map((m, i) => (
                 <div key={i} className={`flex items-start gap-3 ${m.from === "user" ? "justify-end" : "justify-start"}`}>
                   {m.from === "bot" && (
@@ -198,8 +229,8 @@ export default function Chatbot() {
                     </div>
                   )}
 
-                  <div className={`max-w-[78%] px-4 py-2 rounded-lg ${m.from === "user" ? "bg-blue-600 text-white rounded-br-none" : "bg-white text-gray-800 rounded-bl-none border"}`}>
-                    <div className="whitespace-pre-wrap">{m.text}</div>
+                  <div className={`max-w-[78%] px-4 py-2 rounded-xl shadow-sm ${m.from === "user" ? "bg-blue-600 text-white rounded-br-none" : "bg-white text-gray-800 rounded-bl-none border"}`}>
+                    <div className="whitespace-pre-wrap leading-relaxed">{m.text}</div>
                   </div>
 
                   {m.from === "user" && (
@@ -214,7 +245,7 @@ export default function Chatbot() {
                   <div className="flex-shrink-0">
                     <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">B</div>
                   </div>
-                  <div className="max-w-[78%] px-4 py-2 rounded-lg bg-white text-gray-500 rounded-bl-none border italic">Generating...</div>
+                  <div className="max-w-[78%] px-4 py-2 rounded-xl bg-white text-gray-500 rounded-bl-none border italic">Generating...</div>
                 </div>
               )}
             </div>
@@ -229,87 +260,17 @@ export default function Chatbot() {
                 // allow typing even when session isn't created yet; a session will be auto-created on Send
               />
 
-              <div className="flex items-center justify-between mt-3">
-                  <div className="text-xs text-gray-500">You can type anytime — a session will be created when you send your first message.</div>
+              <div className="flex items-center justify-between m-1">
+                <div className="text-xs text-gray-500 m-2">You can type anytime — a session will be created when you send your first message.</div>
                 <div className="flex items-center gap-2">
-                  <button
-                    className="px-4 py-2 rounded-md bg-gray-100 hover:bg-gray-200 text-sm"
-                      onClick={() => setInput("")}
-                  >
-                    Clear
-                  </button>
-                  <button
-                    className="px-4 py-2 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-sm"
-                    onClick={send}
-                      
-                  >
-                    Send
-                  </button>
+                  <button className={btnNeutral} onClick={() => setInput("")}>Clear</button>
+                  <button className={btnPrimary} onClick={send}>Send</button>
                 </div>
               </div>
             </div>
           </div>
 
-          <aside className="w-full md:w-72 border-t md:border-t-0 md:border-l mt-4 md:mt-0 md:block">
-            <div className="p-6">
-              <h3 className="font-semibold mb-3">Sessions & tips</h3>
-              <div className="mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-gray-500">Sessions</div>
-                  <div className="flex items-center gap-2">
-                    <button className="text-xs text-gray-600 px-2 py-1 border rounded" onClick={() => setViewHistory((v) => !v)}>{viewHistory ? 'Hide history' : 'View history'}</button>
-                    <button className="text-xs text-white bg-blue-600 px-2 py-1 rounded" onClick={createSession}>New session</button>
-                  </div>
-                </div>
-
-                {viewHistory ? (
-                  <div className="space-y-2">
-                    {sessions.length === 0 && <div className="text-sm text-gray-500">No saved sessions</div>}
-                    {sessions.map((s, idx) => (
-                      <div key={s.id} className={`flex items-center justify-between p-2 rounded ${s.id === activeSession ? 'bg-blue-50' : ''}`}>
-                        <div className="text-sm truncate">{s.lastMessage ? (s.lastMessage.text || 'Message') : 'Empty session'}</div>
-                        <div className="flex items-center gap-2">
-                          <button className="text-xs text-blue-600" onClick={() => setActiveSession(s.id)}>Open</button>
-                        </div>
-                      </div>
-                    ))}
-                    {sessions.length > 0 && (
-                      <div className="flex items-center justify-between mt-2">
-                        <button className="px-2 py-1 border rounded text-sm" onClick={() => navigateSession('prev')}>Older</button>
-                        <div className="text-xs text-gray-500">{sessions.findIndex(s => s.id === activeSession) >= 0 ? `${sessions.findIndex(s => s.id === activeSession) + 1} of ${sessions.length}` : ''}</div>
-                        <button className="px-2 py-1 border rounded text-sm" onClick={() => navigateSession('next')}>Newer</button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {sessions.length === 0 && <div className="text-sm text-gray-500">No saved sessions</div>}
-                    {sessions.slice(0,4).map((s) => (
-                      <div key={s.id} className="flex items-center justify-between">
-                        <div className="text-sm truncate">{s.lastMessage ? (s.lastMessage.text || 'Message') : 'Empty session'}</div>
-                        <div className="flex items-center gap-2">
-                          <button className="text-xs text-blue-600" onClick={() => setActiveSession(s.id)}>Open</button>
-                        </div>
-                      </div>
-                    ))}
-                    {sessions.length > 4 && <div className="text-xs text-gray-500">...{sessions.length - 4} more</div>}
-                  </div>
-                )}
-              </div>
-
-              <h4 className="font-semibold mb-2">Tips for a supportive chat</h4>
-              <ul className="text-sm space-y-2 text-gray-600">
-                <li>Be honest and specific about how you're feeling.</li>
-                <li>Ask for coping strategies or resources.</li>
-                <li>If you're in immediate danger, call your local emergency number.</li>
-              </ul>
-
-              <div className="mt-6 bg-blue-50 p-3 rounded">
-                <div className="font-medium text-sm">Crisis resources</div>
-                <div className="text-xs text-gray-600 mt-1">If you need urgent help, contact local emergency services or a crisis helpline.</div>
-              </div>
-            </div>
-          </aside>
+          {/* Sidebar (Sessions & tips) intentionally removed per user preference */}
         </div>
       </div>
       {showModal && (
@@ -317,13 +278,13 @@ export default function Chatbot() {
           sessions={sessions}
           onClose={() => setShowModal(false)}
           onOpen={(id) => openSession(id)}
-          onDelete={(id) => {
+            onDelete={(id) => {
             // call server to delete, then refresh sessions list
             fetch(`${API}/api/chat/session/${id}`, { method: 'DELETE' })
               .then((r) => {
                 if (r.ok) {
                   // refresh sessions
-                  fetch(`${API}/api/chat/session`).then(rr => rr.json()).then(d => {
+                  fetch(`${API}/api/chat/session${sessionsQuery}`).then(rr => rr.json()).then(d => {
                     setSessions(d.sessions || []);
                     if (activeSession === id) setActiveSession(null);
                   }).catch(() => {
@@ -352,20 +313,29 @@ export default function Chatbot() {
 // we add a small helper component-like fragment that will be mounted by React when showModal is true.
 export function ChatbotModal({ sessions, onClose, onOpen, onDelete }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-lg p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* clickable dimmed backdrop with blur */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="relative w-full mx-4 sm:mx-auto max-w-lg bg-white backdrop-blur-md border border-white/20 rounded-xl shadow-2xl p-4 sm:p-6 max-h-[90vh] overflow-auto">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-semibold">Session history</h3>
-          <button className="px-2 py-1 text-sm" onClick={onClose}>Close</button>
+          <button className={`${btnNeutral} px-2 py-1 text-sm`} onClick={onClose}>Close</button>
         </div>
-        <div className="space-y-2 max-h-96 overflow-auto">
-          {sessions.length === 0 && <div className="text-sm text-gray-500">No sessions found</div>}
+
+        <div className="space-y-2 max-h-[68vh] overflow-auto">
+          {sessions.length === 0 && <div className="text-sm text-black">No sessions found</div>}
           {sessions.map((s) => (
-            <div key={s.id} className="flex items-center justify-between border p-2 rounded">
-              <div className="text-sm truncate">{s.lastMessage ? (s.lastMessage.text || 'Message') : 'Empty session'}</div>
-              <div className="flex items-center gap-2">
-                <button className="text-xs text-blue-600" onClick={() => onOpen(s.id)}>Open</button>
-                <button className="text-xs text-red-500" onClick={() => onDelete(s.id)}>Delete</button>
+            <div key={s.id} className="flex items-center justify-between border border-white/6 p-3 rounded bg-white/6">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-black truncate">
+                  <span className="font-mono">{`Chat_${s.id}`}</span>
+                </div>
+                <div className="text-xs text-gray-600 truncate">{s.lastMessage ? (s.lastMessage.text || 'Message') : 'Empty session'}</div>
+              </div>
+              <div className="flex items-center gap-2 ml-4">
+                <button className={`${btnGhost} px-2`} onClick={() => onOpen(s.id)}>Open</button>
+                <button className="text-xs text-red-400 px-2" onClick={() => onDelete(s.id)}>Delete</button>
               </div>
             </div>
           ))}

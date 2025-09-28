@@ -2,7 +2,6 @@ import { Routes, Route, Navigate, Link } from "react-router-dom";
 import { useState, useEffect } from "react";
 import AuthPage from "./pages/Authentication";
 import Chatbot from "./pages/Chatbot";
-import Screening from "./pages/Screening";
 import Booking from "./pages/Booking";
 import Resources from "./pages/Resources";
 import AdminDashboard from "./pages/AdminDashboard";
@@ -190,7 +189,7 @@ function App() {
           path="/chatbot"
           element={
             <PrivateRoute user={user}>
-              <Chatbot />
+              <Chatbot user={user} />
             </PrivateRoute>
           }
         />
@@ -199,14 +198,6 @@ function App() {
           element={
             <PrivateRoute user={user}>
               <PeerToPeer />
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/screening"
-          element={
-            <PrivateRoute user={user}>
-              <Screening />
             </PrivateRoute>
           }
         />
