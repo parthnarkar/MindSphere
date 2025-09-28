@@ -81,48 +81,108 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
   }, []);
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">PHQ-9 Questionnaire</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">✕</button>
-        </div>
-        <p className="text-sm text-gray-600 mb-4">Over the last 2 weeks, how often have you been bothered by the following problems?</p>
+    <div className="fixed inset-0 z-50">
+      {/* muted background + subtle dark overlay matching global design */}
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-        <div className="space-y-4">
-          {questions.map((q, i) => (
-            <div key={i} className="border rounded p-3">
-              <div className="font-medium mb-2">{i + 1}. {q}</div>
-              <div className="flex flex-col sm:flex-row gap-2">
-                {[0,1,2,3].map((v) => (
-                  <label key={v} className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer ${answers[i]===v?"bg-blue-50 border-blue-400":"bg-white"}`}>
-                    <input
-                      type="radio"
-                      name={`q${i}`}
-                      value={v}
-                      checked={answers[i] === v}
-                      onChange={() => setAnswer(i, v)}
-                    />
-                    <span>
-                      {v === 0 ? "Not at all" : v === 1 ? "Several days" : v === 2 ? "More than half the days" : "Nearly every day"}
-                    </span>
-                  </label>
-                ))}
+      {/* Centered semi-transparent card (design tokens applied) */}
+      <div className="relative mx-auto my-10 max-w-6xl rounded-2xl shadow-xl bg-white/70 border border-[#E6E6E6] overflow-hidden">
+        {/* changed to 12-col grid so left panel can be narrower */}
+        <div className="grid grid-cols-1 md:grid-cols-12">
+          {/* Left: Brand / intro panel (narrower: col-span-4) */}
+          <div className="hidden md:flex flex-col items-center justify-center p-6 md:col-span-4 bg-gradient-to-b from-white to-[#F7F8FA]">
+            <div className="w-28 h-28 rounded-xl bg-white flex items-center justify-center shadow-md border border-gray-100">
+              <img src="/mindsphere-logo.png" alt="MindSphere" className="w-20 h-20" />
+            </div>
+            <h3 className="mt-6 text-2xl font-semibold text-[#263238]">PHQ‑9 Screening</h3>
+            <p className="mt-3 text-sm text-[#90A4AE] text-center px-4">
+              Quick self-assessment to help identify depressive symptoms. This is not a diagnosis for urgent care, contact your local services.
+            </p>
+
+            <div className="mt-6 w-full px-4">
+              <div className="p-3 rounded-lg bg-[#EAF4FF] border border-[#D7EDF9]">
+                <p className="text-sm text-[#1E6FB3]">
+                  Note: Your responses are saved to your account and help us provide better support recommendations.
+                </p>
               </div>
             </div>
-          ))}
-        </div>
+          </div>
 
-        {error && <div className="text-sm text-red-600 mt-3">{error}</div>}
+          {/* Right: Questions / form panel (wider: col-span-8) */}
+          <div className="p-6 md:p-8 md:col-span-8">
+            <div className="flex items-start justify-between mb-7">
+              <div>
+                <h2 className="text-2xl font-semibold text-[#263238]">PHQ‑9 Questionnaire</h2>
+                <p className="text-sm text-[#263238] mt-1">Over the last 2 weeks, how often have you been bothered by the following problems?</p>
+              </div>
+              <button
+                onClick={onClose}
+                aria-label="Close"
+                className="ml-4 p-2 rounded-md text-[#263238] hover:text-[#FF8C42] focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 cursor-pointer transition-transform transform hover:scale-110 hover:bg-[#FF8C42]/10"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
 
-        <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 rounded border w-full sm:w-auto">Cancel</button>
-          <button onClick={submit} disabled={!allAnswered || submitting} className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-60 w-full sm:w-auto">
-            {submitting ? "Submitting..." : "Submit"}
-          </button>
+            <div className="space-y-5 max-h-[60vh] overflow-y-auto pr-2">
+              {questions.map((q, i) => (
+                <div key={i} className="border border-[#263238]/20 rounded-lg p-4">
+                  <div className="font-medium text-[#263238] mb-3">{i + 1}. {q}</div>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    {[0,1,2,3].map((v) => {
+                      const selected = answers[i] === v;
+                      return (
+                        <label
+                          key={v}
+                          tabIndex={0}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer border transition-all duration-150 transform-gpu hover:scale-100 hover:bg-[#FF8C42]/10 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF8C42]/30 ${
+                            selected
+                              ? 'bg-white/60 border-[#FF8C42] text-[#263238]'
+                              : 'bg-white border-[#E6E6E6] text-[#263238]'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name={`q${i}`}
+                            value={v}
+                            checked={selected}
+                            onChange={() => setAnswer(i, v)}
+                            className="accent-[#FF8C42] focus:ring-0"
+                          />
+                          <span className="text-sm">
+                            {v === 0 ? "Not at all" : v === 1 ? "Several days" : v === 2 ? "More than half the days" : "Nearly every day"}
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {error && <div className="text-sm text-red-600 mt-3">{error}</div>}
+
+            <div className="mt-6 flex flex-col sm:flex-row justify-end gap-3">
+              <button
+                onClick={onClose}
+                className="w-full sm:w-auto px-4 py-2 rounded-lg bg-white/70 text-[#263238] border border-[#E6E6E6] hover:bg-white focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={submit}
+                disabled={!allAnswered || submitting}
+                className="w-full sm:w-auto px-4 py-2 rounded-lg bg-[#FF8C42] text-white font-semibold shadow-sm hover:bg-[#e6732f] disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 cursor-pointer"
+              >
+                {submitting ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
         </div>
-      {/* Toast popup */}
-      {/* Local in-modal toast removed; using global react-toastify to show notifications. */}
       </div>
     </div>
   );
