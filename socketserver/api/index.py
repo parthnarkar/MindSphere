@@ -1,3 +1,17 @@
+try:
+    # when executed as a package
+    from .app import app, socketio
+    import handlers as _handlers  # registers routes and socket handlers
+except Exception:
+    # fallback when running as a script (python index.py)
+    from app import app, socketio
+    import handlers as _handlers
+import os
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 3000))
+    print('WebSocket server ready for connections')
+    socketio.run(app, port=port)
 # Flask + Flask-SocketIO version of the test-socket-server.js
 import os
 import time
@@ -52,18 +66,68 @@ socketio = SocketIO(
 connected_users = {}
 online_users = []
 
+# helper to safely log the Mongo host without leaking credentials
+def _mask_mongo_uri(uri: str):
+    """Return a redacted summary of a Mongo URI for safe logging."""
+    try:
+        if not uri:
+            return 'None'
+        # Try to extract host part without credentials
+        if '//' in uri:
+            after = uri.split('//', 1)[1]
+        else:
+            after = uri
+        # if credentials present, host follows '@'
+        if '@' in after:
+            host_part = after.split('@', 1)[1]
+        else:
+            host_part = after
+        # host is up to first slash
+        host = host_part.split('/', 1)[0]
+        return f'<mongo host={host}>'
+    except Exception:
+        return '<mongo uri masked>'
+
 # MongoDB setup (optional). If MONGO_URI not set, fall back to in-memory store.
+# Read from environment first, then try to load the project's server/.env (useful during
+# local development where the .env values may include surrounding quotes).
 MONGO_URI = os.environ.get('MONGO_URI')
-DB_NAME = os.environ.get('MONGO_DB_NAME') or 'mindsphere'
+DB_NAME = os.environ.get('MONGO_DB_NAME')
+
+# Attempt to read server/.env relative to the repository root (socketserver/api -> ../../server/.env)
+try:
+    env_path = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..', 'server', '.env'))
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                k, v = line.split('=', 1)
+                k = k.strip()
+                v = v.strip()
+                # strip surrounding single/double quotes if present
+                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                    v = v[1:-1]
+                if k == 'MONGO_URI' and not MONGO_URI:
+                    MONGO_URI = v
+                if k == 'MONGO_DB_NAME' and (not os.environ.get('MONGO_DB_NAME')):
+                    DB_NAME = v or DB_NAME
+except Exception as e:
+    print('Warning reading server/.env for socketserver:', e)
+
 if MONGO_URI:
     try:
         mongo = MongoClient(MONGO_URI, serverSelectionTimeoutMS=3000)
+        # ping to ensure connection works and credentials/URI are valid
+        mongo.admin.command('ping')
         db = mongo.get_database(DB_NAME)
         posts_col = db.get_collection('posts')
         reports_col = db.get_collection('reports')
-        print('Connected to MongoDB')
+        print('Connected to MongoDB', _mask_mongo_uri(MONGO_URI))
     except Exception as e:
-        print('MongoDB connection failed:', e)
+        print('MongoDB connection failed (socketserver):', e)
+        # disable DB usage and fall back to in-memory store
         MONGO_URI = None
 
 def _safe_objectid(id_str):
@@ -122,13 +186,33 @@ def create_post():
 @socketio.on('connect')
 def handle_connect():
     print('User connected:', request.sid)
+    # Send current online users to the connecting client for initial state
+    try:
+        emit('users_online', online_users, room=request.sid)
+    except Exception:
+        pass
 
 @socketio.on('user_join')
 def handle_user_join(userData):
-    connected_users[request.sid] = userData
-    online_users.append({**userData, 'socketId': request.sid})
-    emit('users_online', online_users, broadcast=True)
-    emit('user_joined', userData, broadcast=True, include_self=False)
+    # Normalize user data and store with socket id
+    u = userData or {}
+    if 'id' not in u:
+        u['id'] = u.get('userId') or u.get('uid') or str(request.sid)
+    if 'name' not in u:
+        u['name'] = u.get('displayName') or 'Anonymous'
+    connected_users[request.sid] = u
+
+    # Ensure we don't have duplicate socket entries
+    # remove any existing entry with same socketId first
+    online_users[:] = [o for o in online_users if o.get('socketId') != request.sid]
+    online_users.append({**u, 'socketId': request.sid})
+
+    # Broadcast updated user list
+    try:
+        emit('users_online', online_users, broadcast=True)
+        emit('user_joined', u, broadcast=True, include_self=False)
+    except Exception as e:
+        print('Warning: emit users_online failed', e)
 
 @socketio.on('create_post')
 def handle_create_post(post):
@@ -141,7 +225,7 @@ def handle_create_post(post):
             post['id'] = str(res.inserted_id)
     except Exception as e:
         print('Warning: failed to persist post:', e)
-    emit('post_created', post, broadcast=True, include_self=False)
+        emit('post_created', post, broadcast=True, include_self=True)
 
 @socketio.on('add_reply')
 def handle_add_reply(data):
@@ -149,21 +233,48 @@ def handle_add_reply(data):
     reply = data.get('reply')
     print('New reply added to post:', postId)
     try:
+        parentId = reply.get('parentId') if isinstance(reply, dict) else None
         if MONGO_URI:
+            print('handle_add_reply: persisting reply to MongoDB', _mask_mongo_uri(MONGO_URI), 'parentId=', parentId)
             # ensure reply has an id
             if not reply.get('id'):
                 reply['id'] = str(int(time.time() * 1000))
             oid = _safe_objectid(postId)
             if oid:
-                posts_col.update_one({'_id': oid}, {'$push': {'replies': reply}})
+                if parentId:
+                    # try to push into parent's children array (one-level threading)
+                    res = posts_col.update_one({'_id': oid, 'replies.id': parentId}, {'$push': {'replies.$.children': reply}})
+                    if res.modified_count == 0:
+                        # fallback: fetch document and insert in Python (supports slightly more complex nesting)
+                        doc = posts_col.find_one({'_id': oid})
+                        if doc:
+                            modified = False
+                            for r in doc.get('replies', []):
+                                if str(r.get('id')) == str(parentId):
+                                    r.setdefault('children', []).append(reply)
+                                    modified = True
+                                    break
+                            if modified:
+                                posts_col.replace_one({'_id': oid}, doc)
+                else:
+                    # push reply atomically at top-level
+                    posts_col.update_one({'_id': oid}, {'$push': {'replies': reply}})
         else:
+            # in-memory fallback: support parentId threading
             for p in _in_memory_posts:
                 if str(p.get('id')) == str(postId):
-                    p.setdefault('replies', []).append(reply)
+                    if parentId:
+                        # find parent reply and append to its children
+                        for r in p.setdefault('replies', []):
+                            if str(r.get('id')) == str(parentId):
+                                r.setdefault('children', []).append(reply)
+                                break
+                    else:
+                        p.setdefault('replies', []).append(reply)
                     break
     except Exception as e:
         print('Warning: failed to persist reply:', e)
-    emit('reply_added', {'postId': postId, 'reply': reply}, broadcast=True, include_self=False)
+        emit('reply_added', {'postId': postId, 'reply': reply}, broadcast=True, include_self=True)
 
 @socketio.on('upvote_post')
 def handle_upvote_post(data):
@@ -171,9 +282,13 @@ def handle_upvote_post(data):
     print('Post upvoted:', postId)
     try:
         if MONGO_URI:
-            posts_col.update_one({'_id': ObjectId(postId)}, {'$inc': {'upvotes': 1}})
-            doc = posts_col.find_one({'_id': ObjectId(postId)})
-            upvotes = doc.get('upvotes', 0)
+            oid = _safe_objectid(postId)
+            if oid:
+                posts_col.update_one({'_id': oid}, {'$inc': {'upvotes': 1}})
+                doc = posts_col.find_one({'_id': oid})
+                upvotes = doc.get('upvotes', 0)
+            else:
+                upvotes = 0
         else:
             for p in _in_memory_posts:
                 if str(p.get('id')) == str(postId):
@@ -183,7 +298,7 @@ def handle_upvote_post(data):
     except Exception as e:
         print('Warning: upvote persistence failed', e)
         upvotes = int(time.time()) % 20
-    emit('vote_updated', {'postId': postId, 'upvotes': upvotes}, broadcast=True, include_self=False)
+        emit('vote_updated', {'postId': postId, 'upvotes': upvotes}, broadcast=True, include_self=True)
 
 
 @socketio.on('upvote')
@@ -221,20 +336,43 @@ def handle_upvote_reply(data):
     print('Reply upvoted:', replyId, 'on post:', postId)
     try:
         if MONGO_URI:
-            posts_col.update_one({'_id': ObjectId(postId), 'replies.id': replyId}, {'$inc': {'replies.$.upvotes': 1}})
-            doc = posts_col.find_one({'_id': ObjectId(postId)})
-            # find reply upvotes
-            upvotes = 0
-            for r in doc.get('replies', []):
-                if str(r.get('id')) == str(replyId):
-                    upvotes = r.get('upvotes', 0)
-                    break
+            oid = _safe_objectid(postId)
+            if oid:
+                # Try top-level reply increment first
+                res = posts_col.update_one({'_id': oid, 'replies.id': replyId}, {'$inc': {'replies.$.upvotes': 1}})
+                if res.modified_count:
+                    # fetch new upvote count
+                    doc = posts_col.find_one({'_id': oid})
+                    upvotes = 0
+                    for r in doc.get('replies', []):
+                        if str(r.get('id')) == str(replyId):
+                            upvotes = r.get('upvotes', 0)
+                            break
+                else:
+                    # Maybe it's a nested child (reply.children[].id). Do a find & update in Python
+                    doc = posts_col.find_one({'_id': oid})
+                    upvotes = 0
+                    if doc:
+                        modified = False
+                        for r in doc.get('replies', []):
+                            for c in r.get('children', []):
+                                if str(c.get('id')) == str(replyId):
+                                    c['upvotes'] = c.get('upvotes', 0) + 1
+                                    upvotes = c['upvotes']
+                                    modified = True
+                                    break
+                            if modified:
+                                break
+                        if modified:
+                            posts_col.replace_one({'_id': oid}, doc)
+            else:
+                upvotes = 0
         else:
             upvotes = int(time.time()) % 15
     except Exception as e:
         print('Warning: upvote_reply failed', e)
         upvotes = int(time.time()) % 15
-    emit('vote_updated', {'postId': postId, 'replyId': replyId, 'upvotes': upvotes}, broadcast=True, include_self=False)
+        emit('vote_updated', {'postId': postId, 'replyId': replyId, 'upvotes': upvotes}, broadcast=True, include_self=True)
 
 @socketio.on('pin_post')
 def handle_pin_post(data):
@@ -255,7 +393,7 @@ def handle_pin_post(data):
     except Exception as e:
         print('Warning: pin persistence failed', e)
         isPinned = bool(int(time.time()) % 2)
-    emit('post_pinned', {'postId': postId, 'isPinned': isPinned}, broadcast=True, include_self=False)
+        emit('post_pinned', {'postId': postId, 'isPinned': isPinned}, broadcast=True, include_self=True)
 
 @socketio.on('verify_reply')
 def handle_verify_reply(data):
@@ -274,7 +412,7 @@ def handle_verify_reply(data):
                             break
     except Exception as e:
         print('Warning: verify persistence failed', e)
-    emit('reply_verified', {'postId': postId, 'replyId': replyId, 'isVerified': True}, broadcast=True, include_self=False)
+        emit('reply_verified', {'postId': postId, 'replyId': replyId, 'isVerified': True}, broadcast=True, include_self=True)
 
 @socketio.on('typing_start')
 def handle_typing_start(data):

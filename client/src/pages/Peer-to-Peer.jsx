@@ -11,8 +11,8 @@ const mockUser = {
   avatar: 'https://via.placeholder.com/40'
 };
 
-// Socket backend URL (per your request). Falls back to localhost for dev.
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL;
+// Socket backend URL (per your request). Falls back to same origin for dev if not configured.
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || window.location.origin || '';
 
 // Crisis Resources Sidebar Component
 const CrisisResourcesSidebar = () => {
@@ -202,6 +202,7 @@ const PeerToPeer = () => {
   });
   const [replyContent, setReplyContent] = useState('');
   const [activeReplyTo, setActiveReplyTo] = useState(null);
+  const [replyTargetPostId, setReplyTargetPostId] = useState(null);
   const [formErrors, setFormErrors] = useState([]);
 
   // WebSocket connection
@@ -243,9 +244,80 @@ const PeerToPeer = () => {
       s.on('post_updated', ({ postId, updates }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, ...updates } : post)));
       s.on('post_deleted', ({ postId }) => setPosts(prev => prev.filter(post => post.id !== postId)));
 
-      s.on('reply_added', ({ postId, reply }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: [...(post.replies||[]), reply] } : post)));
-      s.on('reply_updated', ({ postId, replyId, updates }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: (post.replies||[]).map(r => r.id === replyId ? { ...r, ...updates } : r) } : post)));
-      s.on('vote_updated', ({ postId, replyId, upvotes }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: (post.replies||[]).map(r => r.id === replyId ? { ...r, upvotes } : r) } : post)));
+      s.on('reply_added', ({ postId, reply }) => setPosts(prev => prev.map(post => {
+        // Normalize id comparison (server may send string ObjectId)
+        if (String(post.id) !== String(postId)) return post;
+        const replies = Array.isArray(post.replies) ? [...post.replies] : [];
+        // If reply already exists (optimistic or duplicate), replace it
+        let replaced = false;
+        for (let i = 0; i < replies.length; i++) {
+          if (String(replies[i].id) === String(reply.id)) {
+            replies[i] = { ...replies[i], ...reply };
+            replaced = true;
+            break;
+          }
+          // check children
+          const children = replies[i].children || [];
+          for (let j = 0; j < children.length; j++) {
+            if (String(children[j].id) === String(reply.id)) {
+              replies[i].children = [...children.slice(0, j), { ...children[j], ...reply }, ...children.slice(j + 1)];
+              replaced = true;
+              break;
+            }
+          }
+          if (replaced) break;
+        }
+
+        if (replaced) {
+          return { ...post, replies };
+        }
+
+        // Otherwise, attach reply in correct place
+        if (reply && reply.parentId) {
+          let attached = false;
+          const newReplies = replies.map(r => {
+            if (String(r.id) === String(reply.parentId)) {
+              attached = true;
+              return { ...r, children: [...(r.children || []), reply] };
+            }
+            return r;
+          });
+          if (attached) return { ...post, replies: newReplies };
+          // parent not found -> treat as top-level
+          return { ...post, replies: [...replies, reply] };
+        }
+        return { ...post, replies: [...replies, reply] };
+      })));
+
+      s.on('reply_updated', ({ postId, replyId, updates }) => setPosts(prev => prev.map(post => {
+        if (String(post.id) !== String(postId)) return post;
+        return {
+          ...post,
+          replies: (post.replies || []).map(r => {
+            if (String(r.id) === String(replyId)) return { ...r, ...updates };
+            // update nested children
+            return { ...r, children: (r.children || []).map(c => String(c.id) === String(replyId) ? { ...c, ...updates } : c) };
+          })
+        };
+      })));
+
+      s.on('vote_updated', ({ postId, replyId, upvotes }) => setPosts(prev => prev.map(post => {
+        if (String(post.id) !== String(postId)) return post;
+        // replyId present -> update either top-level reply or nested child
+        if (replyId) {
+          return {
+            ...post,
+            replies: (post.replies || []).map(r => {
+              if (String(r.id) === String(replyId)) return { ...r, upvotes };
+              // update nested children
+              const children = (r.children || []).map(c => String(c.id) === String(replyId) ? { ...c, upvotes } : c);
+              return { ...r, children };
+            })
+          };
+        }
+        // no replyId => update post upvotes
+        return { ...post, upvotes };
+      })));
 
       s.on('user_typing', ({ userId, userName, postId }) => {
         // add typing user for specific post, avoid duplicates
@@ -264,7 +336,10 @@ const PeerToPeer = () => {
       });
 
       s.on('reply_verified', ({ postId, replyId, isVerified }) => {
-        setPosts(prev => prev.map(post => post.id === postId ? { ...post, replies: (post.replies||[]).map(r => r.id === replyId ? { ...r, isVerified } : r) } : post));
+        setPosts(prev => prev.map(post => {
+          if (String(post.id) !== String(postId)) return post;
+          return { ...post, replies: (post.replies || []).map(r => String(r.id) === String(replyId) ? { ...r, isVerified } : r) };
+        }));
       });
     }
     return () => {
@@ -341,103 +416,9 @@ const PeerToPeer = () => {
     }
   };
 
-  // Setup WebSocket event listeners
-  const setupSocketListeners = () => {
-    if (!socketConnection.socket) return;
-
-    // Real-time post updates
-    socketConnection.on('post_created', (post) => {
-      setPosts(prev => [post, ...prev]);
-    });
-
-    socketConnection.on('post_updated', ({ postId, updates }) => {
-      setPosts(prev => prev.map(post => 
-        post.id === postId ? { ...post, ...updates } : post
-      ));
-    });
-
-    socketConnection.on('post_deleted', ({ postId }) => {
-      setPosts(prev => prev.filter(post => post.id !== postId));
-    });
-
-    // Real-time reply updates
-    socketConnection.on('reply_added', ({ postId, reply }) => {
-      setPosts(prev => prev.map(post => 
-        post.id === postId 
-          ? { ...post, replies: [...post.replies, reply] }
-          : post
-      ));
-    });
-
-    socketConnection.on('reply_updated', ({ postId, replyId, updates }) => {
-      setPosts(prev => prev.map(post => {
-        if (post.id === postId) {
-          return {
-            ...post,
-            replies: post.replies.map(reply => 
-              reply.id === replyId ? { ...reply, ...updates } : reply
-            )
-          };
-        }
-        return post;
-      }));
-    });
-
-    // Real-time voting updates
-    socketConnection.on('vote_updated', ({ postId, replyId, upvotes }) => {
-      setPosts(prev => prev.map(post => {
-        if (post.id === postId) {
-          if (replyId) {
-            return {
-              ...post,
-              replies: post.replies.map(reply => 
-                reply.id === replyId ? { ...reply, upvotes } : reply
-              )
-            };
-          } else {
-            return { ...post, upvotes };
-          }
-        }
-        return post;
-      }));
-    });
-
-    // Typing indicators
-    socketConnection.on('user_typing', ({ userId, userName, postId }) => {
-      setTypingUsers(prev => ({
-        ...prev,
-        [postId]: [...(prev[postId] || []), { userId, userName }]
-      }));
-    });
-
-    socketConnection.on('user_stopped_typing', ({ userId, postId }) => {
-      setTypingUsers(prev => ({
-        ...prev,
-        [postId]: (prev[postId] || []).filter(user => user.userId !== userId)
-      }));
-    });
-
-    // Moderation updates
-    socketConnection.on('post_pinned', ({ postId, isPinned }) => {
-      setPosts(prev => prev.map(post => 
-        post.id === postId ? { ...post, isPinned } : post
-      ));
-    });
-
-    socketConnection.on('reply_verified', ({ postId, replyId, isVerified }) => {
-      setPosts(prev => prev.map(post => {
-        if (post.id === postId) {
-          return {
-            ...post,
-            replies: post.replies.map(reply => 
-              reply.id === replyId ? { ...reply, isVerified } : reply
-            )
-          };
-        }
-        return post;
-      }));
-    });
-  };
+  // Note: inline listeners are registered in the initialization `useEffect` using socketRef.current.
+  // The previous helper referenced an undefined `socketConnection` and could throw a ReferenceError.
+  // If a reusable listener setup is needed later, re-implement using `socketRef.current` and guards.
 
   // Handle creating new post
   const handleCreatePost = async (e) => {
@@ -475,8 +456,8 @@ const PeerToPeer = () => {
         id: Date.now(),
         ...postData,
         author: newPost.anonymous 
-          ? { id: user.id, name: 'Anonymous', role: user.role }
-          : { id: user.id, name: user.name, role: user.role },
+          ? { id: user.id, name: 'Anonymous', role: user.role, email: user.email }
+          : { id: user.id, name: user.name, role: user.role, email: user.email },
         createdAt: new Date(),
         upvotes: 0,
         isPinned: false,
@@ -487,8 +468,8 @@ const PeerToPeer = () => {
       setNewPost({ title: '', content: '', category: 'General', anonymous: false });
       setShowCreatePost(false);
 
-  // Emit to WebSocket for real-time updates
-  try { socketRef.current && socketRef.current.emit('create_post', post); } catch (e) { console.warn('emit create_post failed', e); }
+    // Emit to WebSocket for real-time updates (include author email)
+    try { socketRef.current && socketRef.current.emit('create_post', post); } catch (e) { console.warn('emit create_post failed', e); }
     } catch (err) {
       setError(utils.formatError(err));
     } finally {
@@ -505,14 +486,14 @@ const PeerToPeer = () => {
           if (replyId) {
             return {
               ...post,
-              replies: post.replies.map(reply => 
-                reply.id === replyId 
-                  ? { ...reply, upvotes: reply.upvotes + 1 }
-                  : reply
-              )
+              replies: (post.replies || []).map(reply => {
+                if (reply.id === replyId) return { ...reply, upvotes: (reply.upvotes || 0) + 1 };
+                // update nested children if present
+                return { ...reply, children: (reply.children || []).map(c => c.id === replyId ? { ...c, upvotes: (c.upvotes || 0) + 1 } : c) };
+              })
             };
           } else {
-            return { ...post, upvotes: post.upvotes + 1 };
+            return { ...post, upvotes: (post.upvotes || 0) + 1 };
           }
         }
         return post;
@@ -529,14 +510,13 @@ const PeerToPeer = () => {
           if (replyId) {
             return {
               ...post,
-              replies: post.replies.map(reply => 
-                reply.id === replyId 
-                  ? { ...reply, upvotes: reply.upvotes - 1 }
-                  : reply
-              )
+              replies: (post.replies || []).map(reply => {
+                if (reply.id === replyId) return { ...reply, upvotes: (reply.upvotes || 1) - 1 };
+                return { ...reply, children: (reply.children || []).map(c => c.id === replyId ? { ...c, upvotes: (c.upvotes || 1) - 1 } : c) };
+              })
             };
           } else {
-            return { ...post, upvotes: post.upvotes - 1 };
+            return { ...post, upvotes: (post.upvotes || 1) - 1 };
           }
         }
         return post;
@@ -564,37 +544,22 @@ const PeerToPeer = () => {
       setFormErrors([]);
       
       const replyData = {
-        content: utils.sanitizeContent(replyContent.trim())
+        content: utils.sanitizeContent(replyContent.trim()),
+        parentId: activeReplyTo || null,
+        author: { id: user.id, name: user.name, role: user.role, email: user.email }
       };
 
-      // In production, call API
-      // const createdReply = response.data;
+      // Emit new reply for real-time updates and persistence. Wait for server to broadcast `reply_added`.
+      try { socketRef.current && socketRef.current.emit('add_reply', { postId, reply: replyData }); } catch (e) { console.warn('emit add_reply failed', e); }
 
-      // Mock reply creation for demo
-      const reply = {
-        id: Date.now(),
-        ...replyData,
-        author: { id: user.id, name: user.name, role: user.role },
-        createdAt: new Date(),
-        upvotes: 0,
-        isVerified: false
-      };
-
-      setPosts(prev => prev.map(post => 
-        post.id === postId 
-          ? { ...post, replies: [...post.replies, reply] }
-          : post
-      ));
-
+      // Clear composer immediately for a snappy UX; server will provide the canonical reply via reply_added.
       setReplyContent('');
       setActiveReplyTo(null);
+      setReplyTargetPostId(null);
 
       // Stop typing indicator
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       try { socketRef.current && socketRef.current.emit('typing_stop', { postId }); } catch (e) {}
-
-      // Emit new reply for real-time updates
-      try { socketRef.current && socketRef.current.emit('add_reply', { postId, reply }); } catch (e) { console.warn('emit add_reply failed', e); }
     } catch (err) {
       setError(utils.formatError(err));
     }
@@ -842,7 +807,7 @@ const PeerToPeer = () => {
         <div className="grid gap-8">
           {posts.map((post, index) => (
             <div 
-              key={index}
+              key={post.id || index}
               className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-8 hover:shadow-xl hover:bg-white/90 transition-all duration-300 transform hover:-translate-y-1"
             >
               {/* Post Header */}
@@ -877,29 +842,91 @@ const PeerToPeer = () => {
               </div>
 
               {/* Post Footer */}
-              <div className="flex items-center justify-between pt-6 border-t border-gray-100">
-                <div className="flex items-center gap-6">
-                  <button className="flex items-center gap-2 text-sm font-medium text-calm-blue hover:text-blue-700 transition-colors duration-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-full">
-                    <span className="text-lg">💭</span>
-                    <span>Reply</span>
-                  </button>
-                  <button className="flex items-center gap-2 text-sm font-medium text-calm-blue hover:text-green-700 transition-colors duration-200 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-full">
-                    <span className="text-lg">🤝</span>
-                    <span>Helpful</span>
-                  </button>
+              <div className="pt-6 border-t border-gray-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => { setReplyTargetPostId(post.id); setActiveReplyTo(null); }} className="flex items-center gap-2 text-sm font-medium text-calm-blue hover:text-blue-700 transition-colors duration-200 bg-blue-50 hover:bg-blue-100 px-4 py-2 rounded-full">
+                      <span className="text-lg">💭</span>
+                      <span>Reply</span>
+                    </button>
+                    <button onClick={() => handleUpvote(post.id)} className="flex items-center gap-2 text-sm font-medium text-calm-blue hover:text-green-700 transition-colors duration-200 bg-green-50 hover:bg-green-100 px-4 py-2 rounded-full">
+                      <span className="text-lg">👍</span>
+                      <span>Helpful</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-3 text-sm text-calm-blue">
+                    <span className="flex items-center gap-1">
+                      <span className="text-lg">💬</span>
+                      <span>{post.replies?.length || 0} replies</span>
+                    </span>
+                    <span className="w-1 h-1 bg-calm-blue rounded-full"></span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-lg">👍</span>
+                      <span>{post.upvotes || 0} found helpful</span>
+                    </span>
+                  </div>
                 </div>
-                
-                <div className="flex items-center gap-3 text-sm text-calm-blue">
-                  <span className="flex items-center gap-1">
-                    <span className="text-lg">💬</span>
-                    <span>{post.replies?.length || 0} replies</span>
-                  </span>
-                  <span className="w-1 h-1 bg-calm-blue rounded-full"></span>
-                  <span className="flex items-center gap-1">
-                    <span className="text-lg">👍</span>
-                    <span>{post.upvotes || 0} found helpful</span>
-                  </span>
+
+                {/* Replies list */}
+                <div className="space-y-4">
+                  {(post.replies || []).map(reply => (
+                    <div key={reply.id} className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-md bg-blue-50 flex items-center justify-center text-sm font-semibold">{(reply.author?.name || 'A').charAt(0)}</div>
+                            <div>
+                              <div className="text-sm font-medium text-gray-800">{reply.author?.name || 'Anonymous'}</div>
+                              <div className="text-xs text-gray-500">{utils.formatTimeAgo(reply.createdAt)}</div>
+                            </div>
+                          </div>
+                          <div className="mt-3 text-gray-700">{reply.content}</div>
+                        </div>
+                        <div className="text-sm text-gray-500 flex flex-col items-end gap-2">
+                          <button onClick={() => handleUpvote(post.id, reply.id)} className="px-3 py-1 rounded-full bg-white border text-sm">👍 {reply.upvotes || 0}</button>
+                          {utils.canModerate(user.role) && (
+                            <button onClick={() => handleVerifyReply(post.id, reply.id)} className={`px-3 py-1 rounded-full text-sm ${reply.isVerified ? 'bg-green-100 text-green-700' : 'bg-white border'}`}>{reply.isVerified ? 'Verified' : 'Verify'}</button>
+                          )}
+                          <button onClick={() => { setActiveReplyTo(reply.id); setReplyTargetPostId(post.id); }} className="text-xs text-calm-blue">Reply</button>
+                        </div>
+                      </div>
+
+                      {/* Nested children */}
+                      {(reply.children || []).length > 0 && (
+                        <div className="mt-3 ml-10 space-y-3">
+                          {reply.children.map(child => (
+                            <div key={child.id} className="bg-white rounded-lg p-3 border border-gray-100">
+                              <div className="flex items-center justify-between">
+                                <div className="text-sm text-gray-800">{child.author?.name || 'Anonymous'}</div>
+                                <div className="text-xs text-gray-500">{utils.formatTimeAgo(child.createdAt)}</div>
+                              </div>
+                              <div className="mt-2 text-gray-700">{child.content}</div>
+                              <div className="mt-2 flex items-center gap-3">
+                                <button onClick={() => handleUpvote(post.id, child.id)} className="text-sm">👍 {child.upvotes || 0}</button>
+                                {utils.canModerate(user.role) && <button onClick={() => handleVerifyReply(post.id, child.id)} className="text-sm">{child.isVerified ? 'Verified' : 'Verify'}</button>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
+
+                {/* Reply composer (visible when this post is targeted) */}
+                {replyTargetPostId === post.id && (
+                  <div className="mt-4">
+                    <textarea value={replyContent} onChange={(e) => setReplyContent(e.target.value)} placeholder={activeReplyTo ? 'Replying to a comment...' : 'Write a reply...'} className="w-full p-3 border border-gray-200 rounded-xl mb-3" rows={3} />
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500">Replying as {user.name}{user.email ? ` (${user.email})` : ''}</div>
+                      <div className="flex items-center gap-3">
+                        <button onClick={() => { setReplyContent(''); setReplyTargetPostId(null); setActiveReplyTo(null); }} className="px-4 py-2">Cancel</button>
+                        <button onClick={() => handleAddReply(post.id)} className="px-4 py-2 bg-blue-600 text-white rounded-xl">Reply</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ))}
