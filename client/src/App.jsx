@@ -14,7 +14,7 @@ import { API } from "./hooks/helper";
 import Header from "./components/Header";
 import Layout from "./components/Layout";
 import CounsellorsGrid from "./components/CounsellorsGrid";
-import { PrivateRoute, CounsellorRoute } from "./components/ProtectedRoutes";
+import { PrivateRoute, CounsellorRoute, AdminRoute } from "./components/ProtectedRoutes";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { loginUser, registerUser, logoutUser, signInWithGoogle } from "../services/auth";
 import { db } from "../firebase";
 import { collection, query as q, where, getDocs } from "firebase/firestore";
@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from "react-toastify";
 import bgVideo from "../assets/Login.mp4";
 import logo from "../assets/mindsphere-logo.png";
+import { useLocation } from "react-router-dom";
 
 // Accept an optional prop to default the role selector
 const AuthPage = ({ defaultRole } = {}) => {
