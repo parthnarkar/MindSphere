@@ -395,7 +395,7 @@ def generate_structured_report(user_meta: dict, phq_entries: list, chat_msgs: li
         texts = [ (m.get('text') or m.get('message') or m.get('content') or '') for m in chat_msgs ]
         joined = ' '.join(texts).lower()
 
-        # Heuristic topic extraction: count presence of topic keywords
+    # Heuristic topic extraction: count presence of topic keywords
         topic_keywords = {
             'stress/anxiety': ['stress','anxiet','panic','nervou'],
             'depression/mood': ['depress','sad','hopeless','hopelessness','low mood'],
@@ -424,44 +424,123 @@ def generate_structured_report(user_meta: dict, phq_entries: list, chat_msgs: li
         sample_excerpt = texts[-4:] if len(texts) >=4 else texts
         cleaned = [s.replace('\n',' ').strip()[:300] for s in sample_excerpt if s]
 
-        # Chatbot: Five-point deterministic summary only
+        # Build a deterministic extractive 500-word summary from the combined chat messages.
+        def _summarize_to_n_words(full_text, max_words=500):
+            if not full_text or not isinstance(full_text, str):
+                return ''
+            # Split into sentences (simple rule-based split)
+            sentences = re.split(r'(?<=[.!?])\s+', full_text.strip())
+            if not sentences:
+                return ''
+
+            # Small stopword list for determinism
+            stopwords = set(['the','and','is','in','it','of','to','a','i','that','you','for','on','with','this','was','are','be','have','not','as','but','or','they','we','he','she'])
+
+            # build word frequencies
+            freqs = {}
+            for s in sentences:
+                for w in re.findall(r"\w+", s.lower()):
+                    if w in stopwords or len(w) <= 2:
+                        continue
+                    freqs[w] = freqs.get(w, 0) + 1
+
+            # score sentences by sum of word freq
+            scored = []
+            for idx, s in enumerate(sentences):
+                words = re.findall(r"\w+", s.lower())
+                score = sum(freqs.get(w, 0) for w in words)
+                scored.append((idx, score, s))
+
+            # pick sentences with positive score; deterministic tie-break by original index
+            scored_positive = [t for t in scored if t[1] > 0]
+            if not scored_positive:
+                # fallback: take first sentences until word limit
+                out_words = []
+                for s in sentences:
+                    out_words.extend(re.findall(r"\w+", s))
+                    if len(out_words) >= max_words:
+                        break
+                return ' '.join(out_words[:max_words])
+
+            # choose top sentences by score but limit to those that help reach word count
+            scored_positive.sort(key=lambda x: (-x[1], x[0]))
+            selected_idxs = [t[0] for t in scored_positive]
+            # keep original order for coherence
+            selected_idxs = sorted(selected_idxs)
+
+            summary_sentences = []
+            total_words = 0
+            for idx in selected_idxs:
+                s = sentences[idx]
+                wcount = len(re.findall(r"\w+", s))
+                if total_words + wcount > max_words and total_words > 0:
+                    break
+                summary_sentences.append(s.strip())
+                total_words += wcount
+                if total_words >= max_words:
+                    break
+
+            # If still too short, append more sentences from start until reaching limit
+            si = 0
+            while total_words < max_words and si < len(sentences):
+                if si not in selected_idxs:
+                    s = sentences[si]
+                    wcount = len(re.findall(r"\w+", s))
+                    if total_words + wcount > max_words:
+                        # append truncated
+                        words = re.findall(r"\w+", s)[:(max_words - total_words)]
+                        if words:
+                            summary_sentences.append(' '.join(words))
+                        total_words = max_words
+                        break
+                    summary_sentences.append(s.strip())
+                    total_words += wcount
+                si += 1
+
+            return ' '.join(summary_sentences)[:max_words*6]  # rough char cap
+
+        joined_full = ' '.join(texts)
+        summary_500 = _summarize_to_n_words(joined_full, max_words=500)
+
+        # Chatbot: Five-point deterministic summary only (use 500-word extractive summary split into five long bullets)
         try:
             lines.append('')
             lines.append('### Chatbot History: Five-point summary')
-            # 1) Topics
-            lines.append(f'1. Topics: {topics_summary}.')
-            # 2) Tone
-            lines.append(f'2. Tone and affect: {tone_desc}.')
-            # 3) Most frequent concern keywords
+            # Build five long bullets by deterministically splitting the 500-word summary
             try:
-                keyword_counts = {}
-                for k in (neg_terms + pos_terms):
-                    c = joined.count(k)
-                    if c:
-                        keyword_counts[k] = c
-                top_keywords = sorted(keyword_counts.items(), key=lambda x: x[1], reverse=True)[:3]
-                if top_keywords:
-                    kw_desc = ', '.join([f'{k} ({v} occurrence(s))' for k,v in top_keywords])
-                    lines.append(f'3. Most frequent concern keywords: {kw_desc}.')
+                # normalize whitespace
+                s = (summary_500 or '').strip()
+                if not s:
+                    lines.append('1. No substantive chatbot content available to summarize.')
+                    lines.append('2. No substantive chatbot content available to summarize.')
+                    lines.append('3. No substantive chatbot content available to summarize.')
+                    lines.append('4. No substantive chatbot content available to summarize.')
+                    lines.append('5. No substantive chatbot content available to summarize.')
                 else:
-                    lines.append('3. No strongly recurring concern keywords detected in the chatbot history.')
+                    # split into words, compute approx chunk sizes
+                    words = re.findall(r"\S+", s)
+                    total = len(words)
+                    # five nearly-equal parts (first parts may be slightly larger to preserve coherence)
+                    base = total // 5
+                    remainder = total % 5
+                    parts = []
+                    idx = 0
+                    for i in range(5):
+                        take = base + (1 if i < remainder else 0)
+                        chunk_words = words[idx: idx + take]
+                        idx += take
+                        parts.append(' '.join(chunk_words))
+
+                    # create long bullet points with context labels
+                    labels = ['Topics and concerns', 'Emotional tone and affect', 'Key problem areas and examples', 'Representative excerpts and patterns', 'Recommendations and suggested follow-up']
+                    for i in range(5):
+                        content = parts[i].strip()
+                        # truncate a bit if overly long but keep 'long' bullets
+                        if len(content) > 1200:
+                            content = content[:1200].rsplit(' ',1)[0] + '...'
+                        lines.append(f'{i+1}. {labels[i]}: {content}')
             except Exception:
-                lines.append('3. Unable to compute frequent keywords from chatbot history.')
-            # 4) Representative excerpt
-            if cleaned:
-                excerpt = cleaned[0]
-                lines.append(f'4. Representative recent message (truncated): "{excerpt}"')
-            else:
-                lines.append('4. No representative chatbot messages available.')
-            # 5) Recommendation / risk flag
-            try:
-                risk_flag = 'immediate follow-up' if 'suicid' in joined or 'kill myself' in joined or 'hurt myself' in joined else 'routine follow-up'
-                if risk_flag == 'immediate follow-up':
-                    lines.append('5. Recommendation: Immediate clinical follow-up and safety assessment recommended due to language indicating self-harm or suicidal ideation.')
-                else:
-                    lines.append('5. Recommendation: Consider a scheduled check-in to explore the highlighted topics and validate coping strategies; escalate if symptoms appear to worsen.')
-            except Exception:
-                lines.append('5. Recommendation: Follow-up suggested based on clinician judgment.')
+                lines.append('### Chatbot History: Five-point summary could not be generated due to internal processing error.')
         except Exception:
             lines.append('### Chatbot History: Five-point summary could not be generated due to incomplete data or an internal error.')
     lines.append('')

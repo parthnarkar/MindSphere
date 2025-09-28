@@ -27,6 +27,12 @@ const CounsellorDashboard = () => {
   const [MarkdownComponent, setMarkdownComponent] = useState(null);
   const [remarkGfmPlugin, setRemarkGfmPlugin] = useState(null);
   const [mdLoadError, setMdLoadError] = useState(false);
+  const [sections, setSections] = useState({
+    chatHistory: [],
+    peerPosts: [],
+    resources: [],
+    phq9: []
+  });
 
   // Form state
   // showProfileForm can be boolean or an object { open: true, allowEditIdentity: true }
@@ -541,17 +547,13 @@ const CounsellorDashboard = () => {
               </div>
 
               <div className="mt-4">
-                <h4 className="text-sm font-semibold">Chatbot history</h4>
+                <h4 className="text-sm font-semibold">Chatbot history (500‑word summary)</h4>
                 {detailsLoading ? (
                   <p className="text-sm text-gray-500">Loading...</p>
                 ) : (userChatHistory && userChatHistory.length > 0) ? (
                   <div className="space-y-2">
-                    {userChatHistory.map((m, i) => (
-                      <div key={i} className="text-sm text-gray-700 bg-gray-50 p-2 rounded">
-                        <div className="text-xs text-gray-500">{m.timestamp ? new Date(m.timestamp).toLocaleString() : ''} — {m.from || m.role || ''}</div>
-                        <div className="mt-1 whitespace-pre-wrap">{m.text || m.message || m.content || ''}</div>
-                      </div>
-                    ))}
+                    {/* Render a deterministic extractive 500-word summary of the chat history */}
+                    <ChatSummaryBlock messages={userChatHistory} />
                   </div>
                 ) : (
                   <p className="text-sm text-gray-500">No chat history found for this user.</p>
@@ -580,35 +582,117 @@ const CounsellorDashboard = () => {
                 <div className="text-sm text-gray-600">Actions</div>
                 <div className="flex items-center gap-2">
                   <button onClick={async () => {
-                    // Ask server to generate a concise report and show preview; allow user to download PDF
                     if (!activeAppointment) return;
                     setReportLoading(true);
                     try {
-                      const payload = {
-                        email: (activeAppointment.email || '').toLowerCase(),
-                        appointment: activeAppointment,
-                        phqEntries: activePhqEntries
+                      // Format data for API calls
+                      const chatData = (userChatHistory || []).map(msg => ({
+                        role: msg.from || msg.role || 'unknown',
+                        content: msg.text || msg.message || msg.content || ''
+                      }));
+
+                      const peerData = (userPosts || []).map(post => ({
+                        title: post.title || '(Untitled)',
+                        content: post.content || post.body || ''
+                      }));
+
+                      const resourceData = (userResources || []).map(res => ({
+                        title: res.title || res.name || '',
+                        type: res.type || 'unknown',
+                        language: res.language || 'English'
+                      }));
+
+                      const phqData = (activePhqEntries || []).map(entry => ({
+                        timestamp: entry.timestamp || entry.submittedAt || '',
+                        total_score: entry.total_score || entry.totalScore || 0,
+                        answers: entry.answers || []
+                      }));
+
+                      // Helper: return default points or call backend when data exists
+                      const defaultPoints = Array.from({ length: 5 }, () => 'No data available for analysis.');
+                      const getSummaryForSection = async (data, sectionName) => {
+                        // If there's no usable data, return default immediately
+                        const isEmpty = data == null || (Array.isArray(data) && data.length === 0) || (typeof data === 'string' && data.trim() === '');
+                        if (isEmpty) return { points: defaultPoints };
+                        try {
+                          const res = await fetch(`${BACKEND}/api/summarize`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: data, section: sectionName })
+                          });
+                          if (!res.ok) {
+                            // don't throw; return defaults to keep UI stable
+                            return { points: defaultPoints };
+                          }
+                          const body = await res.json();
+                          return { points: (body && Array.isArray(body.points) && body.points.length > 0) ? body.points : defaultPoints };
+                        } catch (e) {
+                          console.warn(`Summary fetch failed for ${sectionName}`, e);
+                          return { points: defaultPoints };
+                        }
                       };
-                      const res = await fetch(`${BACKEND}/api/appointments/${encodeURIComponent(activeAppointment.id)}/report`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
+
+                      // Fetch summaries in parallel but skip empty sections automatically
+                      const [chatSummary, peerSummary, resourceSummary, phqSummary] = await Promise.all([
+                        getSummaryForSection(chatData, 'chat'),
+                        getSummaryForSection(peerData, 'peer'),
+                        getSummaryForSection(resourceData, 'resources'),
+                        getSummaryForSection(phqData, 'phq9')
+                      ]);
+
+                      setSections({
+                        chatHistory: chatSummary.points || [],
+                        peerPosts: peerSummary.points || [],
+                        resources: resourceSummary.points || [],
+                        phq9: phqSummary.points || []
                       });
-                      if (!res.ok) {
-                        const txt = await res.text();
-                        throw new Error(txt || 'Report generation failed');
-                      }
-                      const body = await res.json();
-                      const md = body.report || '';
-                      setReportMarkdown(md);
+
+                      // Default messages if sections are empty
+                      const defaultMessage = "No data available for analysis.";
+                      const formatSection = (points) => (points && points.length > 0) ?
+                        points.map(point => `- ${point}`).join('\n') :
+                        `- ${defaultMessage}`;
+
+                      // Generate markdown report with the new format
+                      const report = `
+# Client Report: ${activeAppointment.userName || 'Client'}
+
+## Basic Information
+- **Name:** ${activeAppointment.userName || 'Not provided'}
+- **Email:** ${activeAppointment.email || 'Not provided'}
+- **Contact:** ${activeAppointment.contact || 'Not provided'}
+- **Appointment Date:** ${activeAppointment.time ? new Date(activeAppointment.time).toLocaleString() : 'Not scheduled'}
+- **Status:** ${activeAppointment.status || 'Unknown'}
+
+## Chat History Analysis
+${formatSection(chatSummary.points)}
+
+## Peer Forum Activity
+${formatSection(peerSummary.points)}
+
+## Resource Engagement
+${formatSection(resourceSummary.points)}
+
+## PHQ-9 Screening Summary
+${formatSection(phqSummary.points)}
+`;
+
+                      setReportMarkdown(report);
                       setShowReportPreview(true);
                     } catch (e) {
                       console.error('Report generation failed', e);
-                      alert('Report generation failed: ' + (e.message || e));
+                      // Show a more user-friendly error message
+                      const errorMessage = e.message || 'An unexpected error occurred';
+                      const friendlyMessage = errorMessage.startsWith('Failed to fetch') ?
+                        'Unable to connect to the server. Please check your internet connection and try again.' :
+                        `Report generation failed: ${errorMessage}`;
+                      alert(friendlyMessage);
                     } finally {
                       setReportLoading(false);
                     }
-                  }} className={`px-3 py-2 rounded ${reportLoading ? 'bg-indigo-300' : 'bg-indigo-600'} text-white`} disabled={reportLoading}>
+                  }} 
+                  className={`px-3 py-2 rounded ${reportLoading ? 'bg-indigo-300' : 'bg-indigo-600'} text-white flex items-center justify-center gap-2`} 
+                  disabled={reportLoading}>
                     {reportLoading ? (
                       <span className="flex items-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path></svg> Generating...</span>
                     ) : 'Generate Report'}
@@ -812,3 +896,99 @@ async function loadDetailsForUser(email, appt) {
 
 
 export default CounsellorDashboard;
+
+// Small deterministic extractive summarizer component for chat history (client-side)
+function ChatSummaryBlock({ messages }) {
+  // messages: array of objects with text/message/content
+  const [serverSummary, setServerSummary] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+  const joined = (messages || []).map(m => (m.text || m.message || m.content || '')).join('\n');
+
+  React.useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!joined || joined.trim().length === 0) return;
+      setLoading(true);
+      try {
+        const res = await fetch(`${API}/api/chat/summary`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: messages })
+        });
+        if (!mounted) return;
+        if (!res.ok) {
+          // fallback to local summarizer
+          setServerSummary(null);
+        } else {
+          const body = await res.json();
+          setServerSummary(body.summary || null);
+        }
+      } catch (e) {
+        setServerSummary(null);
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [joined]);
+
+  // Local fallback summarizer (deterministic extractive) — same logic as before but used only if server fails
+  const localSummarize = (fullText) => {
+    if (!fullText || typeof fullText !== 'string') return '';
+    const sentences = fullText.trim().split(/(?<=[.!?])\s+/);
+    if (!sentences || sentences.length === 0) return fullText.split(/\s+/).slice(0,500).join(' ');
+    const stopwords = new Set(['the','and','is','in','it','of','to','a','i','that','you','for','on','with','this','was','are','be','have','not','as','but','or','they','we','he','she']);
+    const freqs = {};
+    for (const s of sentences) {
+      for (const w of (s.match(/\w+/g) || []).map(x => x.toLowerCase())) {
+        if (stopwords.has(w) || w.length <= 2) continue;
+        freqs[w] = (freqs[w] || 0) + 1;
+      }
+    }
+    const scored = sentences.map((s, idx) => {
+      const words = (s.match(/\w+/g) || []).map(x => x.toLowerCase());
+      const score = words.reduce((acc, w) => acc + (freqs[w] || 0), 0);
+      return { idx, score, text: s };
+    });
+    const positive = scored.filter(x => x.score > 0);
+    const selection = positive.length ? positive.sort((a,b) => b.score - a.score || a.idx - b.idx).map(x => x.idx) : scored.map(x => x.idx);
+    const selected = [];
+    let totalWords = 0;
+    for (const i of selection) {
+      const s = sentences[i];
+      const wcount = (s.match(/\w+/g) || []).length;
+      if (totalWords + wcount > 500 && totalWords > 0) break;
+      selected.push(s.trim());
+      totalWords += wcount;
+      if (totalWords >= 500) break;
+    }
+    if (totalWords < 500) {
+      for (let i = 0; i < sentences.length && totalWords < 500; i++) {
+        if (!selection.includes(i)) {
+          const s = sentences[i];
+          const wcount = (s.match(/\w+/g) || []).length;
+          if (totalWords + wcount > 500) {
+            const rem = 500 - totalWords;
+            const words = (s.match(/\w+/g) || []).slice(0, rem);
+            if (words.length) {
+              selected.push(words.join(' '));
+              totalWords = 500;
+            }
+            break;
+          }
+          selected.push(s.trim());
+          totalWords += wcount;
+        }
+      }
+    }
+    return selected.join(' ');
+  };
+
+  const rendered = loading ? 'Generating summary...' : (serverSummary || localSummarize(joined) || 'No chat content available.');
+
+  return (
+    <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded whitespace-pre-wrap">
+      {rendered}
+    </div>
+  );
+}

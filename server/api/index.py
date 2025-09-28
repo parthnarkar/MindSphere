@@ -159,6 +159,150 @@ def api_chat_session_messages(session_id):
     return jsonify({"error": "could not append message"}), 500
 
 
+
+
+@bp.route('/api/chat/summary', methods=['POST', 'OPTIONS'])
+def api_chat_summary():
+    """Generate a 500-word summary of a chat history using the configured Gemini model.
+
+    Accepts JSON body: { messages?: [ { text?: str, message?: str, content?: str } ], session_id?: str, email?: str }
+    If `messages` supplied, uses those; otherwise if session_id provided, attempts to load messages from DB.
+    Returns: { summary: str }
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+    data = request.get_json() or {}
+    messages = data.get('messages')
+    session_id = data.get('session_id')
+    email = data.get('email')
+
+    msgs = []
+    if isinstance(messages, list) and messages:
+        msgs = messages
+    elif session_id:
+        msgs = dbutils.get_session_messages(email, session_id) or []
+    else:
+        return jsonify({"error": "messages or session_id required"}), 400
+
+    # join into a single conversation text
+    texts = [(m.get('text') or m.get('message') or m.get('content') or '') for m in msgs]
+    convo = '\n'.join([t for t in texts if t])
+    if not convo:
+        return jsonify({"summary": ""})
+
+    # ensure model is initialized
+    if not getattr(modelutils, 'client', None) or not getattr(modelutils, 'model_name', None):
+        return jsonify({"error": "Generative model not configured on server"}), 503
+
+    # Build a concise prompt asking for a 500-word summary. Ask the model to return ONLY the summary.
+    prompt = (
+        helpers.COPING_SYSTEM_PROMPT + "\n"
+        "You are an expert clinical summarizer. Produce a clear, neutral, 500-word summary of the following chat conversation between a student and an automated chatbot. "
+        "Do NOT invent details; only summarize the content present. Output ONLY the summary text and do not include headings or commentary.\n\nConversation:\n"
+        + convo + "\n\nSummary (approx. 500 words):"
+    )
+
+    try:
+        summary = modelutils.generate_coping_text(prompt)
+    except Exception as e:
+        return jsonify({"error": "Model generation failed", "details": str(e)}), 500
+
+    return jsonify({"summary": summary})
+
+
+
+@bp.route('/api/summaries', methods=['POST', 'OPTIONS'])
+def api_summaries():
+		"""Generate Gemini-backed summaries for PHQ-9 entries, forum posts, resource finder history, and optional chat messages.
+
+		Accepts JSON body with optional keys: `phqEntries`, `posts`, `resources`, `chatMsgs`, and `userMeta`.
+		Returns: { summary: str }
+		"""
+		if request.method == 'OPTIONS':
+			return '', 204
+		data = request.get_json() or {}
+		phq_entries = data.get('phqEntries') or data.get('phq_entries') or []
+		posts = data.get('posts') or []
+		resources_list = data.get('resources') or []
+		chat_msgs = data.get('chatMsgs') or data.get('chat_msgs') or []
+		user_meta = data.get('userMeta') or data.get('user_meta') or {}
+
+		# If nothing supplied, complain
+		if not (phq_entries or posts or resources_list or chat_msgs):
+			return jsonify({'error': 'Provide at least one of phqEntries, posts, resources, or chatMsgs'}), 400
+
+		# Ensure model is initialized
+		if not getattr(modelutils, 'client', None) or not getattr(modelutils, 'model_name', None):
+			return jsonify({"error": "Generative model not configured on server"}), 503
+
+		# Truncate/excerpt inputs to reasonable sizes for the prompt
+		try:
+			phq_excerpt = []
+			for p in (phq_entries or [])[:5]:
+				ts = p.get('timestamp') or p.get('submittedAt') or ''
+				score = p.get('total_score') or p.get('totalScore') or ''
+				phq_excerpt.append(f"{ts} — Score: {score}")
+		except Exception:
+			phq_excerpt = ['No PHQ-9 entries available']
+
+		try:
+			posts_excerpt = []
+			for p in (posts or [])[:10]:
+				title = (p.get('title') or p.get('subject') or '').strip() or '(no title)'
+				body = (p.get('content') or p.get('body') or '')
+				# short preview
+				preview = (body or '').replace('\n',' ').strip()[:300]
+				posts_excerpt.append(f"{title}: {preview}")
+		except Exception:
+			posts_excerpt = ['No forum posts available']
+
+		try:
+			resources_excerpt = []
+			for r in (resources_list or [])[:20]:
+				title = r.get('title') or r.get('name') or str(r)
+				typ = r.get('type') or r.get('category') or 'other'
+				lang = r.get('language') or 'unknown'
+				resources_excerpt.append(f"- {title} ({typ}, {lang})")
+		except Exception:
+			resources_excerpt = ['No resources available']
+
+		try:
+			chat_excerpt = []
+			for m in (chat_msgs or [])[-40:]:
+				who = m.get('from') or m.get('role') or ''
+				t = (m.get('text') or m.get('message') or m.get('content') or '')
+				chat_excerpt.append(f"[{who}] {str(t)[:300]}")
+		except Exception:
+			chat_excerpt = ['No chat history available']
+
+		# Build the model prompt
+		prompt_sections = []
+		prompt_sections.append(f"Client name: {user_meta.get('name') or user_meta.get('userName') or 'Unknown'}")
+		prompt_sections.append(f"Email: {user_meta.get('email') or user_meta.get('user_email') or 'Unknown'}")
+		prompt_sections.append('\nPHQ-9 entries:')
+		prompt_sections.extend(phq_excerpt or ['No PHQ-9 entries found.'])
+		prompt_sections.append('\nForum posts (title: preview):')
+		prompt_sections.extend(posts_excerpt or ['No forum posts found.'])
+		prompt_sections.append('\nResource interactions:')
+		prompt_sections.extend(resources_excerpt or ['No resources found.'])
+		prompt_sections.append('\nRecent chat messages (most recent last):')
+		prompt_sections.extend(chat_excerpt or ['No chat history found.'])
+
+		model_prompt = (
+			helpers.COPING_SYSTEM_PROMPT + "\n" +
+			"You are an expert clinical summarizer. Using ONLY the data below, produce clear, neutral, counselor-facing summaries for each section: 'PHQ-9 Summary', 'Forum Posts', 'Resource Finder'. \n"
+			"For each section output a short Markdown header (e.g., '## PHQ-9 Summary') followed by 3-5 concise bullet points. Do NOT invent facts or add content not present in the data. Keep language neutral and avoid diagnostic conclusions. Limit output to approximately one page. Output ONLY the Markdown text.\n\n"
+			"DATA:\n" + "\n".join(prompt_sections) + "\n\nProduce the summaries now."
+		)
+
+		try:
+			summary = modelutils.generate_coping_text(model_prompt)
+		except Exception as e:
+			return jsonify({"error": "Model generation failed", "details": str(e)}), 500
+
+		return jsonify({'summary': summary}), 200
+
+
 @bp.route('/api/chat/session/<session_id>', methods=['DELETE', 'OPTIONS'])
 def api_chat_session_delete(session_id):
 	if request.method == 'OPTIONS':
@@ -293,17 +437,187 @@ def api_bookings():
 	return jsonify({"bookings": bookings})
 
 
+@bp.route('/api/summarize', methods=['POST'])
+def api_summarize():
+	if request.method == 'POST':
+		# Lightweight request logging to help debug intermittent 400s from the frontend
+		try:
+			data = request.get_json(force=False) or {}
+		except Exception as _e:
+			# If JSON parsing fails, capture raw body for debugging and return default points
+			raw = (request.get_data() or b'').decode('utf-8', errors='replace')
+			print(f"[api_summarize] JSON parse error, raw body: {raw[:200]}")
+			data = {}
+
+		# Log a brief summary of incoming payload for debugging (do not log secrets)
+		try:
+			keys = list(data.keys()) if isinstance(data, dict) else []
+			print(f"[api_summarize] Received payload keys={keys} size={len(str(data))}")
+		except Exception:
+			print("[api_summarize] Received payload (unreadable)")
+		text = data.get('text')
+		section = data.get('section', '')
+
+		# If no content is provided, return default placeholder points rather than a 400
+		if not text:
+			default_points = [
+				"No data available for this section.",
+				"No data available for this section.",
+				"No data available for this section.",
+				"No data available for this section.",
+				"No data available for this section."
+			]
+			return jsonify({"points": default_points}), 200
+
+		# Different prompt templates for different section types
+		prompts = {
+			'chat': """You are a clinical data analyst summarizing chat interactions. Create exactly 5 concise but detailed observations about this chat history. Each point should be a complete sentence focused on patterns, themes, or notable interactions. Avoid diagnostic language or personal interpretations.
+
+IMPORTANT RULES:
+- Start each point directly with the observation (no bullet points or numbers)
+- Each point should be a single complete sentence
+- Focus on objective patterns and factual content
+- Do not include formatting instructions or meta-commentary
+- Avoid phrases like "the user shows" or "demonstrates"
+- Do not use markdown formatting or special characters
+
+Chat History:
+{text}
+
+5 observation points:""",
+
+			'peer': """You are a clinical data analyst summarizing forum participation. Create exactly 5 concise but detailed observations about these forum posts. Each point should be a complete sentence focused on topics discussed, engagement patterns, and types of interactions. Avoid diagnostic language or personal interpretations.
+
+IMPORTANT RULES:
+- Start each point directly with the observation (no bullet points or numbers)
+- Each point should be a single complete sentence
+- Focus on objective patterns and factual content
+- Do not include formatting instructions or meta-commentary
+- Avoid phrases like "the user shows" or "demonstrates"
+- Do not use markdown formatting or special characters
+
+Forum Posts:
+{text}
+
+5 observation points:""",
+
+			'resources': """You are a clinical data analyst summarizing resource usage patterns. Create exactly 5 concise but detailed observations about these resource interactions. Each point should be a complete sentence focused on types of resources accessed, topics of interest, and engagement patterns. Avoid diagnostic language or personal interpretations.
+
+IMPORTANT RULES:
+- Start each point directly with the observation (no bullet points or numbers)
+- Each point should be a single complete sentence
+- Focus on objective patterns and factual content
+- Do not include formatting instructions or meta-commentary
+- Avoid phrases like "the user shows" or "demonstrates"
+- Do not use markdown formatting or special characters
+
+Resource History:
+{text}
+
+5 observation points:""",
+
+			'phq9': """You are a clinical data analyst summarizing PHQ-9 screening data. Create exactly 5 concise but detailed observations about these screening results. Each point should be a complete sentence focused on score patterns, changes over time, and response consistencies. Avoid diagnostic language or personal interpretations.
+
+IMPORTANT RULES:
+- Start each point directly with the observation (no bullet points or numbers)
+- Each point should be a single complete sentence
+- Focus on objective patterns and factual content
+- Do not include formatting instructions or meta-commentary
+- Avoid phrases like "the user shows" or "demonstrates"
+- Do not use markdown formatting or special characters
+
+PHQ-9 History:
+{text}
+
+5 observation points:"""
+		}
+
+		# Get the appropriate prompt template or use a generic one
+		prompt_template = prompts.get(section, """Generate 5 detailed bullet points summarizing the following information. 
+Each point should be a complete, informative statement:
+
+{text}
+
+Generate 5 detailed bullet points:""")
+
+		# Prepare text for the prompt
+		if isinstance(text, (list, tuple)):
+			try:
+				# Convert list items to string representation
+				# If elements are dict-like, attempt to stringify important fields for the model
+				parts = []
+				for item in text:
+					if isinstance(item, dict):
+						# try common fields
+						t = item.get('content') or item.get('text') or item.get('message') or item.get('title') or item.get('name') or str(item)
+						parts.append(str(t))
+					else:
+						parts.append(str(item))
+				text_str = "\n".join(parts)
+			except Exception:
+				# On failure, return default placeholder rather than a 400 so frontend can still build a report
+				default_points = [
+					"No data available for this section.",
+					"No data available for this section.",
+					"No data available for this section.",
+					"No data available for this section.",
+					"No data available for this section."
+				]
+				return jsonify({"points": default_points}), 200
+		else:
+			text_str = str(text)
+
+		try:
+			# Generate summary using Gemini
+			prompt = prompt_template.format(text=text_str)
+			response = modelutils.generate_coping_text(prompt)
+
+			# Process response to extract clean points
+			points = []
+			for line in response.split('\n'):
+				line = line.strip()
+				# Skip empty lines, headers, and meta-text
+				if not line or line.startswith('#') or line.lower().startswith(('here are', 'observation', 'generate', 'bullet')):
+					continue
+
+				# Clean up common formatting
+				line = line.lstrip('- •*').strip()
+				line = line.replace('**', '').replace('*', '').replace('\\', '')
+
+				# Skip if the line is too short or is a meta-instruction
+				if len(line) < 10 or line.lower().startswith(('each point', 'the following', 'points:', 'summarize')):
+					continue
+
+				points.append(line)
+
+			# Ensure exactly 5 points
+			points = [p for p in points if not p.lower().startswith('no additional')]  # Remove placeholder text
+			if len(points) > 5:
+				points = points[:5]
+			while len(points) < 5:
+				if len(points) == 0:
+					points.append("Insufficient data available for meaningful analysis.")
+				else:
+					points.append("Additional aspects of interaction not observed in the available data.")
+
+			return jsonify({"points": points})
+
+		except Exception as e:
+			return jsonify({"error": str(e)}), 500
+
+	return jsonify({"error": "Method not allowed"}), 405
+
 @bp.route('/api/resources', methods=['GET', 'POST'])
 def api_resources():
-	if request.method == 'POST':
-		data = request.get_json() or {}
-		title = data.get('title')
-		if not title:
-			return jsonify({"error": "title required"}), 400
-		item = {"id": int(datetime.utcnow().timestamp() * 1000), "title": title, "type": data.get('type', 'guide'), "language": data.get('language', 'English'), "url": data.get('url', '')}
-		resources.insert(0, item)
-		return jsonify(item), 201
-	return jsonify({"resources": resources})
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        title = data.get('title')
+        if not title:
+            return jsonify({"error": "title required"}), 400
+        item = {"id": int(datetime.utcnow().timestamp() * 1000), "title": title, "type": data.get('type', 'guide'), "language": data.get('language', 'English'), "url": data.get('url', '')}
+        resources.insert(0, item)
+        return jsonify(item), 201
+    return jsonify({"resources": resources})
 
 
 
