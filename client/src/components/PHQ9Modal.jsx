@@ -187,5 +187,3 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
     </div>
   );
 }
-
-
