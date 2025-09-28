@@ -11,9 +11,19 @@ const debounce = (fn, wait = 350) => {
 };
 
 const FALLBACK = [
-  { id: 1, title: "Intro to coping skills", type: "video", language: "English", url: "" },
-  { id: 2, title: "How to support a friend", type: "video", language: "Hindi", url: "" },
+  { id: 1, title: "Intro to coping skills", type: "video", language: "English", url: "https://www.youtube.com/results?search_query=coping+skills" },
+  { id: 2, title: "How to support a friend", type: "video", language: "Hindi", url: "https://www.youtube.com/results?search_query=how+to+support+a+friend" },
   { id: 3, title: "Offline resource map", type: "guide", language: "Regional", url: "" },
+];
+
+// Curated free and open resources (static) shown alongside search results
+const OPEN_SOURCE = [
+  { id: "who", title: "WHO — Mental health information", type: "guide", url: "https://www.who.int/health-topics/mental-health" },
+  { id: "nimh", title: "NIMH — Mental Health Resources", type: "guide", url: "https://www.nimh.nih.gov/health" },
+  { id: "mentalhealthgov", title: "MentalHealth.gov — Guides & help", type: "guide", url: "https://www.mentalhealth.gov/" },
+  { id: "openlibrary", title: "OpenLibrary — Search books", type: "books", url: "https://openlibrary.org/" },
+  { id: "wikipedia", title: "Wikipedia — Trusted overview articles", type: "articles", url: "https://en.wikipedia.org/" },
+  { id: "mha", title: "Mental Health America — Tools & screenings", type: "guide", url: "https://mhanational.org/" },
 ];
 
 export default function Resources() {
@@ -34,6 +44,7 @@ export default function Resources() {
   const [wikiResults, setWikiResults] = useState([]);
   const [bookResults, setBookResults] = useState([]);
   const [localResources, setLocalResources] = useState([]);
+  const [openSourceList] = useState(OPEN_SOURCE);
 
   // Loading & error
   const [loading, setLoading] = useState(false);
@@ -41,8 +52,19 @@ export default function Resources() {
 
   const controllerRef = useRef(null);
 
+  // UI / pagination state
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [ytLimit, setYtLimit] = useState(9);
+  const [bookLimit, setBookLimit] = useState(6);
+
   // Use Vite env vars for YouTube API, allow overriding via variables
   const YT_KEY = import.meta.env.VITE_YT_API_KEY || null;
+
+  // Accent colors (primary, darker hover, and light background)
+  const ACCENT = "#263238";
+  const ACCENT_DARK = "#ffffffff"; // hover / stronger shade
+  const ACCENT_LIGHT = "#faf3efff"; // very light background shade
+  const ACCENT_HOVER = "#4b4b4bff"; // hover / stronger shade --- IGNORE ---
 
   // Debounced search function
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,7 +93,7 @@ export default function Resources() {
 
         // YouTube search (client-side) — requires API key
         if (YT_KEY) {
-          const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=9&q=${encodeURIComponent(
+          const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${ytLimit}&q=${encodeURIComponent(
             q
           )}&key=${YT_KEY}`;
           searchTasks.push(fetch(ytUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))));
@@ -87,7 +109,7 @@ export default function Resources() {
         searchTasks.push(fetch(wikiUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))));
 
         // OpenLibrary search for books
-        const booksUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=6`;
+  const booksUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=${bookLimit}`;
         searchTasks.push(fetch(booksUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))));
 
         // Local API resources
@@ -130,6 +152,8 @@ export default function Resources() {
         setWikiResults(wikiItems);
         setBookResults(bookDocs);
         setLocalResources(Array.isArray(local) ? local : []);
+        // keep curated list available
+        // openSourceList is static, no need to set state
       } catch (err) {
         if (err.name === "AbortError") return; // user typed again
         console.error(err);
@@ -138,7 +162,7 @@ export default function Resources() {
         setLoading(false);
       }
     }, 450),
-    [YT_KEY]
+    [YT_KEY, ytLimit, bookLimit]
   );
 
   // Only clear results when user clears the query. Actual search is performed
@@ -159,26 +183,41 @@ export default function Resources() {
     doSearch(query);
   };
 
+  const loadMore = (type) => {
+    if (type === "videos") {
+      setYtLimit((s) => Math.min(25, s + 9));
+    }
+    if (type === "books") {
+      setBookLimit((s) => Math.min(40, s + 12));
+    }
+    // trigger a fresh search instantly (debounced function will run after 450ms)
+    doSearch(query);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+  <div className="rounded-3xl shadow-xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${ACCENT_LIGHT}, #FFF8F5)` }}>
           <div className="p-6 sm:p-8">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900">Resource Finder</h1>
-                <p className="mt-1 text-sm text-gray-500">Search videos, articles, books and local support resources.</p>
+                <h1 className="text-2xl sm:text-3xl font-extrabold" style={{ color: ACCENT }}>Resource Finder</h1>
+                <p className="mt-1 text-sm" style={{ color: ACCENT }}>Search videos, articles, books, local support and curated open/free resources.</p>
               </div>
 
-                <form onSubmit={onSubmit} className="w-full sm:w-1/2">
+              <form onSubmit={onSubmit} className="w-full lg:w-1/2">
                 <label htmlFor="resource-search" className="sr-only">Search resources</label>
                 <div className="relative">
-                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                  <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none" style={{ color: ACCENT }}>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" /></svg>
                   </span>
-                  <input
-                    id="resource-search"
-                    className="w-full pl-10 pr-28 py-2 border rounded-lg shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                    <input
+                      id="resource-search"
+                      className="w-full pl-10 pr-28 py-2 border-0 rounded-full shadow-md focus:ring-2 focus:outline-none bg-white"
+                      // Tailwind arbitrary focus ring for accent color (works with JIT)
+                      style={{ caretColor: ACCENT }}
+                      onFocus={(e) => e.currentTarget.classList.add('focus:ring-[#FF8C42]')}
+                      onBlur={(e) => e.currentTarget.classList.remove('focus:ring-[#FF8C42]')}
                     placeholder="e.g. coping with anxiety"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
@@ -186,9 +225,9 @@ export default function Resources() {
                   />
                   <div className="absolute inset-y-0 right-0 flex items-center gap-2 pr-2">
                     {query && (
-                      <button type="button" onClick={() => setQuery("")} className="text-sm px-2 py-1 rounded-md text-gray-600 hover:bg-gray-100">Clear</button>
+                      <button type="button" onClick={() => setQuery("")} className="text-sm px-3 py-1 rounded-full hover:bg-[#0000000a] cursor-pointer" style={{ color: ACCENT }}>Clear</button>
                     )}
-                    <button type="submit" className="bg-blue-600 text-white px-4 py-1.5 rounded-md hover:bg-blue-700">Search</button>
+                    <button type="submit" className="px-4 py-1.5 rounded-full cursor-pointer text-white" style={{ background: ACCENT }} onMouseOver={(e) => (e.currentTarget.style.background = ACCENT_HOVER)} onMouseOut={(e) => (e.currentTarget.style.background = ACCENT)}>Search</button>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -196,7 +235,8 @@ export default function Resources() {
                     <button
                       key={s}
                       onClick={() => setQuery(s)}
-                      className="text-xs md:text-sm px-3 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                      className="text-xs md:text-sm px-3 py-1 rounded-full bg-white/80 hover:bg-black/10 shadow-sm cursor-pointer"
+                      style={{ color: ACCENT }}
                     >
                       {s}
                     </button>
@@ -206,12 +246,13 @@ export default function Resources() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 sm:p-8 bg-gray-50">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 p-6 sm:p-8" style={{ background: ACCENT_LIGHT }}>
             <main className="lg:col-span-2 space-y-6">
+              {(activeFilter === 'all' || activeFilter === 'videos') && (
               <section>
                 <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-lg font-semibold text-gray-800">YouTube Videos</h2>
-                  <div className="text-sm text-gray-500">{!YT_KEY ? <span className="text-yellow-600">YouTube API key not set</span> : `${ytResults.length} results`}</div>
+                  <h2 className="text-lg font-semibold" style={{ color: ACCENT }}>YouTube Videos</h2>
+                  <div className="text-sm" style={{ color: ACCENT }}>{!YT_KEY ? <span className="text-yellow-600">YouTube API key not set</span> : `${ytResults.length} results`}</div>
                 </div>
 
                 <div className="bg-white p-4 rounded-lg shadow-sm">
@@ -232,7 +273,7 @@ export default function Resources() {
                   {!loading && error && <div className="text-sm text-red-600">{error}</div>}
 
                   {!loading && !YT_KEY && (
-                    <div className="text-sm text-gray-600">Set <code>VITE_YT_API_KEY</code> in <code>client/.env</code> to enable YouTube search.</div>
+                    <div className="text-sm" style={{ color: ACCENT }}>Set <code>VITE_YT_API_KEY</code> in <code>client/.env</code> to enable YouTube search.</div>
                   )}
 
                   {!loading && YT_KEY && ytResults.length === 0 && (
@@ -242,55 +283,68 @@ export default function Resources() {
                   {!loading && ytResults.length > 0 && (
                     <div className="grid gap-4 md:grid-cols-2">
                       {ytResults.map((v) => (
-                        <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer" className="flex gap-3 p-3 rounded-lg border hover:shadow-md hover:bg-white transition bg-white">
-                          <div className="relative w-24 sm:w-28 h-16 sm:h-20 flex-shrink-0">
+                        <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer" className="flex gap-3 p-3 rounded-lg border hover:shadow-md transition bg-white">
+                          <div className="relative w-28 h-20 flex-shrink-0 rounded overflow-hidden bg-gray-50">
                             {v.thumbnail ? (
-                              <img src={v.thumbnail} alt="thumb" className="w-full h-full object-cover rounded" />
+                              <img src={v.thumbnail} alt="thumb" className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full bg-gray-100 rounded" />
+                              <div className="w-full h-full bg-gray-100" />
                             )}
                             <div className="absolute inset-0 flex items-center justify-center">
-                              <div className="bg-black bg-opacity-30 rounded-full p-2">
+                              <div className="rounded-full p-2" style={{ background: ACCENT, opacity: 0.6 }}>
                                 <svg className="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
                               </div>
                             </div>
                           </div>
                           <div className="flex-1">
-                            <div className="font-medium text-gray-900 line-clamp-2">{v.title}</div>
-                            <div className="text-xs text-gray-500 mt-1">{v.channel}</div>
+                            <div className="font-medium line-clamp-2" style={{ color: ACCENT }}>{v.title}</div>
+                            <div className="text-xs mt-1" style={{ color: ACCENT }}>{v.channel}</div>
                           </div>
                         </a>
                       ))}
                     </div>
                   )}
+
+                  {!loading && ytResults.length > 0 && YT_KEY && (
+                    <div className="mt-3 text-right">
+                      <button onClick={() => loadMore("videos")} className="text-sm px-3 py-1 rounded-full text-white" style={{ background: ACCENT }} onMouseOver={(e) => (e.currentTarget.style.background = ACCENT_DARK)} onMouseOut={(e) => (e.currentTarget.style.background = ACCENT)}>Load more videos</button>
+                    </div>
+                  )}
                 </div>
               </section>
+              )}
 
+              {(activeFilter === 'all' || activeFilter === 'articles') && (
               <section>
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">Wikipedia Articles</h2>
+                <h2 className="text-lg font-semibold mb-3" style={{ color: ACCENT }}>Wikipedia Articles</h2>
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                   {wikiResults.length === 0 ? (
-                    <div className="text-sm text-gray-500">No articles found.</div>
+                    <div className="text-sm" style={{ color: ACCENT }}>No articles found.</div>
                   ) : (
                     <ul className="space-y-3">
                       {wikiResults.map((w) => (
-                        <li key={w.id} className="p-3 rounded border hover:bg-gray-50">
-                          <a href={w.url} target="_blank" rel="noreferrer" className="font-medium text-blue-600 hover:underline">
+                        <li key={w.id} className="p-3 rounded border hover:bg-[#FFF4EE]">
+                          <a href={w.url} target="_blank" rel="noreferrer" className="font-medium hover:underline" style={{ color: ACCENT }}>
                             {w.title}
                           </a>
-                          <div className="text-sm text-gray-700 mt-1" dangerouslySetInnerHTML={{ __html: w.snippet }} />
+                          <div className="text-sm mt-1" style={{ color: ACCENT }} dangerouslySetInnerHTML={{ __html: w.snippet }} />
                         </li>
                       ))}
                     </ul>
                   )}
                 </div>
               </section>
+              )}
 
+              {(activeFilter === 'all' || activeFilter === 'books') && (
               <section>
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">Books (OpenLibrary)</h2>
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-lg font-semibold" style={{ color: ACCENT }}>Books (OpenLibrary)</h2>
+                  <div className="text-sm" style={{ color: ACCENT }}>{bookResults.length} results</div>
+                </div>
                 <div className="bg-white p-4 rounded-lg shadow-sm">
                   {bookResults.length === 0 ? (
-                    <div className="text-sm text-gray-500">No books found.</div>
+                    <div className="text-sm" style={{ color: ACCENT }}>No books found.</div>
                   ) : (
                     <div className="grid gap-3 md:grid-cols-2">
                       {bookResults.map((b) => (
@@ -298,67 +352,59 @@ export default function Resources() {
                           {b.cover ? (
                             <img src={b.cover} className="w-20 h-28 object-cover rounded" alt={b.title} />
                           ) : (
-                            <div className="w-20 h-28 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-500">No cover</div>
+                            <div className="w-20 h-28 rounded flex items-center justify-center text-xs" style={{ background: ACCENT_LIGHT, color: ACCENT }}>No cover</div>
                           )}
                           <div>
-                            <div className="font-medium text-gray-900">{b.title}</div>
-                            <div className="text-sm text-gray-600">{b.author}</div>
-                            <div className="text-xs text-gray-500">{b.year}</div>
+                            <div className="font-medium" style={{ color: ACCENT }}>{b.title}</div>
+                            <div className="text-sm" style={{ color: ACCENT }}>{b.author}</div>
+                            <div className="text-xs" style={{ color: ACCENT }}>{b.year}</div>
                           </div>
                         </div>
                       ))}
                     </div>
                   )}
+
+                  {bookResults.length > 0 && (
+                    <div className="mt-3 text-right">
+                      <button onClick={() => loadMore("books")} className="text-sm px-3 py-1 rounded-full text-white" style={{ background: ACCENT }} onMouseOver={(e) => (e.currentTarget.style.background = ACCENT_DARK)} onMouseOut={(e) => (e.currentTarget.style.background = ACCENT)}>Load more books</button>
+                    </div>
+                  )}
                 </div>
               </section>
+              )}
             </main>
-
+            
             <aside className="space-y-6">
               <div className="bg-white p-4 rounded-lg shadow-sm">
-                <h3 className="font-semibold mb-3">Local Resources</h3>
-                {localResources.length === 0 ? (
-                  <div className="text-sm text-gray-500">No local resources found for this query. Showing fallbacks.</div>
-                ) : (
-                  <ul className="space-y-3">
-                    {localResources.map((r) => (
-                      <li key={r.id} className="text-sm border p-3 rounded hover:bg-gray-50">
-                        <div className="font-medium text-gray-900">{r.title}</div>
-                        <div className="text-xs text-gray-600">{r.type} — {r.language}</div>
-                        {r.url && (
-                          <a href={r.url} target="_blank" rel="noreferrer" className="text-xs text-blue-600 hover:underline mt-1 block">Open</a>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {localResources.length === 0 && (
-                  <div className="mt-3 space-y-2">
-                    {FALLBACK.map((f) => (
-                      <div key={f.id} className="border p-3 rounded bg-gray-50">
-                        <div className="font-medium">{f.title}</div>
-                        <div className="text-xs text-gray-600">{f.type}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <h3 className="text-md font-semibold mb-2" style={{ color: ACCENT }}>Filters</h3>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    ["all", "All"],
+                    ["videos", "Videos"],
+                    ["articles", "Articles"],
+                    ["books", "Books"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => setActiveFilter(key)}
+                      className={`text-sm px-3 py-1 rounded-full cursor-pointer hover:bg-[#263238]/10 ${activeFilter === key ? 'text-white' : 'bg-white border'}`}
+                      style={activeFilter === key ? { background: ACCENT } : { color: ACCENT }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               <div className="bg-white p-4 rounded-lg shadow-sm">
-                <h3 className="font-semibold mb-3">Crisis & Helplines</h3>
-                <ul className="text-sm space-y-2">
-                  <li>
-                    <div className="font-medium">Crisis Text Line</div>
-                    <div className="text-xs text-gray-600">Text HOME to 741741</div>
-                  </li>
-                  <li>
-                    <div className="font-medium">National Suicide Prevention Lifeline</div>
-                    <div className="text-xs text-gray-600">988</div>
-                  </li>
-                  <li>
-                    <div className="font-medium">Campus Counseling</div>
-                    <div className="text-xs text-gray-600">(555) 123-4567</div>
-                  </li>
+                <h3 className="text-md font-semibold mb-2" style={{ color: ACCENT }}>Curated open & free resources</h3>
+                <ul className="space-y-2">
+                  {openSourceList.map((o) => (
+                    <li key={o.id} className="p-2 rounded border hover:bg-[#FFF4EE]">
+                      <a href={o.url} target="_blank" rel="noreferrer" className="font-medium" style={{ color: ACCENT }}>{o.title}</a>
+                      <div className="text-xs" style={{ color: ACCENT }}>{o.type}</div>
+                    </li>
+                  ))}
                 </ul>
               </div>
             </aside>
