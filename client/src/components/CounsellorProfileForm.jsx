@@ -3,17 +3,18 @@ import React, { useState } from 'react';
 const CounsellorProfileForm = ({ user = {}, onSubmit, onCancel, isLoading = false, allowEditIdentity = false }) => {
   const [form, setForm] = useState(() => ({
     name: user.name || '',
-    number: '',
+    number: user.number || user.phone || user.contact || '',
     email: user.email || '',
     specialization: user.specialization || '',
-    experience: '',
-    address: '',
-    careerInformation: '',
-    qualifications: '',
-    languages: '',
-    consultationFee: '',
-    availability: '',
-    bio: ''
+    experience: user.experience || '',
+    address: user.address || '',
+    careerInformation: user.careerInformation || user.careerInformation || '',
+    qualifications: user.qualifications || '',
+    languages: user.languages || '',
+    consultationFee: user.consultationFee || user.consultationFee || '',
+    availability: user.availability || '',
+    bio: user.bio || '',
+    image: user.image || user.photo || ''
   }));
 
   // Keep form in sync if parent provides user after initial render
@@ -22,8 +23,18 @@ const CounsellorProfileForm = ({ user = {}, onSubmit, onCancel, isLoading = fals
       setForm(prev => ({
         ...prev,
         name: user.name || prev.name,
+        number: user.number || user.phone || user.contact || prev.number,
         email: user.email || prev.email,
         specialization: user.specialization || prev.specialization,
+        experience: user.experience || prev.experience,
+        address: user.address || prev.address,
+        careerInformation: user.careerInformation || prev.careerInformation,
+        qualifications: user.qualifications || prev.qualifications,
+        languages: user.languages || prev.languages,
+        consultationFee: user.consultationFee || prev.consultationFee,
+        availability: user.availability || prev.availability,
+        bio: user.bio || prev.bio,
+        image: user.image || user.photo || prev.image,
       }));
     }
   }, [user]);
