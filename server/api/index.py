@@ -60,13 +60,16 @@ def api_chat():
 		return jsonify({"error": "Message is required"}), 400
 	# Run server-side intent detection first
 	detected = helpers.detect_intent(user_message)
+	# Allow optional conversation history passed from the client so the model can reference prior turns
+	history = data.get('history') if isinstance(data, dict) else None
 
 	# Crisis handling: ask the model to generate the crisis-aware reply so no hardcoded text is returned
 	if detected.get('intent') == 'crisis' or helpers.detect_crisis(user_message):
+		# Use the global coping prompt persona as a base and ask for a brief crisis-aware reply
 		prompt = (
-			"You are a compassionate, safety-focused support assistant. The user message appears to indicate a crisis. "
-			"Provide a short, empathetic response that urges the user to seek immediate help and lists crisis resources. "
-			"Do NOT provide medical advice beyond recommending contacting emergency services or a crisis hotline."
+			helpers.COPING_SYSTEM_PROMPT + "\n" +
+			"The user message indicates a possible crisis. Provide a short, empathetic reply that urges the user to seek immediate help and lists crisis resources (hotlines, emergency services) where appropriate. "
+			"Do NOT provide medical diagnoses or medical advice beyond recommending contacting emergency services or a crisis hotline." 
 			f"\nUser message: {user_message}"
 		)
 		try:
@@ -77,17 +80,18 @@ def api_chat():
 
 	# Topic gate: if message isn't clearly student MH-related, ask the model to craft a clarifying question
 	if not helpers.looks_student_mh_related(user_message):
-		prompt = (
-			"You are a supportive assistant. The user message may be outside the scope of student mental health. "
-			"Please generate one brief clarifying question that asks whether the user is discussing how they are feeling or a different topic. "
-			f"\nUser message: {user_message}"
+		# Use the same persona + prompt builder so history (if provided) is included and the model keeps the conversational style
+		clarify_text = (
+			"[clarify] Please generate one brief clarifying question (one sentence) asking whether the user is discussing how they are feeling or a different topic. "
+			f"If helpful, reference prior turns from the conversation history.\nUser message: {user_message}"
 		)
+		prompt = helpers.build_coping_prompt(clarify_text, history=history)
 		try:
 			text = modelutils.generate_coping_text(prompt)
 		except Exception as e:
 			return jsonify({"error": "Model generation failed", "details": str(e)}), 500
 		return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence')})
-	prompt = helpers.build_coping_prompt(f"[intent={detected.get('intent')}] {user_message}")
+	prompt = helpers.build_coping_prompt(f"[intent={detected.get('intent')}] {user_message}", history=history)
 	try:
 		text = modelutils.generate_coping_text(prompt)
 	except Exception as e:
@@ -162,11 +166,11 @@ def api_chat_session_delete(session_id):
 @bp.route('/api/chat/init', methods=['GET'])
 def api_chat_init():
 	"""Return a model-generated opening message for the chatbot (no hardcoded content)."""
-	# Construct a prompt instructing the model to produce a concise friendly greeting
+	# Construct a prompt instructing the model to produce a concise friendly greeting, using the counseling persona
 	prompt = (
-		"You are an anonymous, stigma-free support assistant talking to a student. "
+		helpers.COPING_SYSTEM_PROMPT + "\n" +
 		"Provide a short, welcoming opening message (one or two sentences) that invites the user to share how they're feeling. "
-		"Avoid medical claims and do not reference internal system names."
+		"Keep the tone warm, approachable, and student-friendly. Avoid medical claims and do not reference internal system names."
 	)
 	try:
 		text = modelutils.generate_coping_text(prompt)

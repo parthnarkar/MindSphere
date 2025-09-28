@@ -48,23 +48,57 @@ def _extract_text(resp):
             if 'candidates' in resp and resp['candidates']:
                 c = resp['candidates'][0]
                 if isinstance(c, dict) and 'content' in c:
-                    return c['content']
+                    # content may be a string or a list of parts; coerce to a joined string
+                    cont = c['content']
+                    if isinstance(cont, (list, tuple)):
+                        pieces = []
+                        for p in cont:
+                            try:
+                                pieces.append(_coerce_to_string(p) or '')
+                            except Exception:
+                                try:
+                                    pieces.append(str(p))
+                                except Exception:
+                                    pass
+                        return '\n'.join([p for p in pieces if p])
+                    return cont
             if 'output' in resp and resp['output']:
                 o = resp['output'][0]
                 if isinstance(o, dict) and 'content' in o:
-                    return o['content']
+                    cont = o['content']
+                    if isinstance(cont, (list, tuple)):
+                        pieces = []
+                        for p in cont:
+                            try:
+                                pieces.append(_coerce_to_string(p) or '')
+                            except Exception:
+                                try:
+                                    pieces.append(str(p))
+                                except Exception:
+                                    pass
+                        return '\n'.join([p for p in pieces if p])
+                    return cont
             if 'text' in resp:
                 return resp['text']
 
         # Object with attributes (older SDK objects)
         if hasattr(resp, 'candidates') and getattr(resp, 'candidates'):
             try:
-                return getattr(resp.candidates[0], 'content', str(resp.candidates[0]))
+                c = getattr(resp.candidates[0], 'content', resp.candidates[0])
+                # if content is list-like, join
+                if isinstance(c, (list, tuple)):
+                    pieces = [_coerce_to_string(x) for x in c]
+                    return '\n'.join([p for p in pieces if p])
+                return _coerce_to_string(c)
             except Exception:
                 pass
         if hasattr(resp, 'output') and getattr(resp, 'output'):
             try:
-                return getattr(resp.output[0], 'content', str(resp.output[0]))
+                o = getattr(resp.output[0], 'content', resp.output[0])
+                if isinstance(o, (list, tuple)):
+                    pieces = [_coerce_to_string(x) for x in o]
+                    return '\n'.join([p for p in pieces if p])
+                return _coerce_to_string(o)
             except Exception:
                 pass
         if hasattr(resp, 'text'):
@@ -99,17 +133,25 @@ def _coerce_to_string(x):
             return _coerce_to_string(getattr(x, 'text'))
         if hasattr(x, 'content'):
             return _coerce_to_string(getattr(x, 'content'))
-        # If it's an iterable with a single string-like element, try that
+        # If it's a list/tuple, join all elements into a single string
+        if isinstance(x, (list, tuple)):
+            parts = []
+            for it in x:
+                p = _coerce_to_string(it)
+                if p:
+                    parts.append(p)
+            return '\n'.join(parts)
+        # If it's an iterable that's not a string (e.g. generator), try to collect items
         try:
-            # avoid treating strings as iterables here
             if not isinstance(x, (str, bytes, bytearray)):
-                iter(x)
-                # pick first element if it exists
-                first = None
-                for first in x:
-                    break
-                if first is not None:
-                    return _coerce_to_string(first)
+                iterator = iter(x)
+                parts = []
+                for it in iterator:
+                    p = _coerce_to_string(it)
+                    if p:
+                        parts.append(p)
+                if parts:
+                    return '\n'.join(parts)
         except Exception:
             pass
         return str(x)
@@ -131,13 +173,26 @@ def _clean_text(s: str):
         if s is None:
             return None
         import re
-        # Try to extract text from a `parts { text: "..." }` representation
-        m = re.search(r'parts\s*\{.*?text:\s*"(.*?)".*?\}', s, re.DOTALL)
+        # Try to extract text from a `parts { text: "..." }` representation (may be repeated)
+        m = re.findall(r'parts\s*\{.*?text:\s*"(.*?)".*?\}', s, re.DOTALL)
         if m:
-            return m.group(1).strip()
-        # Remove any lines like: role: "model"
+            # join multiple matches preserving newlines
+            joined = '\n'.join([mm.strip() for mm in m if mm is not None])
+            s = joined
+        # Remove any lines like: role: "model" or role: "assistant"
         s2 = re.sub(r'\n?role:\s*".*?"\n?', '\n', s)
-        # Remove extraneous braces or leading/trailing whitespace
+        # Unescape common escaped sequences when the model returned a repr-like string
+        try:
+            if ('\\n' in s2) or ('\\t' in s2) or ('\\"' in s2) or ('\\u' in s2):
+                # decode common escape sequences (safe fallback)
+                try:
+                    s2 = bytes(s2, 'utf-8').decode('unicode_escape')
+                except Exception:
+                    # as a milder fallback, replace literal escapes
+                    s2 = s2.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"')
+        except Exception:
+            pass
+        # Trim and return
         s2 = s2.strip()
         return s2
     except Exception:
