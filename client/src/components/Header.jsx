@@ -13,10 +13,9 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
   }, [location.pathname]);
 
   const baseLink = ({ isActive }) =>
-    `px-3 py-2 rounded-md text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 focus:ring-offset-2 focus:ring-offset-white ${
-      isActive
-        ? "text-[#FF8C42] font-semibold"
-        : "text-[#90A4AE] hover:text-[#263238]"
+    `px-3 py-2 rounded-md text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 focus:ring-offset-2 focus:ring-offset-white ${isActive
+      ? "text-[#FF8C42] font-semibold"
+      : "text-[#90A4AE] hover:text-[#263238]"
     }`;
 
   const actionClass =
@@ -153,8 +152,8 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
             {user?.role === "admin"
               ? adminNav
               : user?.role === "counsellor"
-              ? counsellorNav
-              : defaultNav}
+                ? counsellorNav
+                : defaultNav}
           </nav>
 
           {/* Right side: Profile + Logout */}
@@ -170,11 +169,19 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                 className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md hover:scale-105 transition"
                 title="Your Profile"
               >
-                {user.photoURL ? (
+                {user.role === "admin" ? (
+                  <img
+                    src="/admin.png"
+                    alt="Admin"
+                    className="object-cover w-8 h-8"
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }}
+                  />
+                ) : user.photoURL ? (
                   <img
                     src={user.photoURL}
                     alt="Profile"
                     className="w-full h-full object-cover"
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }}
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-[#FF8C42] text-white font-bold text-lg">
@@ -202,8 +209,8 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
               {user?.role === "admin"
                 ? adminNav
                 : user?.role === "counsellor"
-                ? counsellorNav
-                : defaultNav}
+                  ? counsellorNav
+                  : defaultNav}
             </div>
           </div>
         )}

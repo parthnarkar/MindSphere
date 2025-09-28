@@ -68,17 +68,17 @@ export default function AdminDashboard() {
     fetchData();
   }, []);
 
-  const filteredInstitutions = selectedInstitution === 'all' 
-    ? institutions 
+  const filteredInstitutions = selectedInstitution === 'all'
+    ? institutions
     : institutions.filter(inst => inst.id === selectedInstitution);
 
   // Filter counsellors by institution
-  const filteredCounsellors = selectedCounsellorInstitution === 'all' 
-    ? counsellors 
+  const filteredCounsellors = selectedCounsellorInstitution === 'all'
+    ? counsellors
     : counsellors.filter(counsellor => counsellor.institution === selectedCounsellorInstitution);
 
   // Filter users by institution
-  const filteredUsers = selectedUserInstitution === 'all' 
+  const filteredUsers = selectedUserInstitution === 'all'
     ? users.filter(user => user.role === 'user')
     : users.filter(user => user.role === 'user' && user.institution === selectedUserInstitution);
 
@@ -86,12 +86,12 @@ export default function AdminDashboard() {
   const generateScreeningTrends = () => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
     const currentDate = new Date();
-    
+
     return months.map((month, index) => {
       const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - (5 - index), 1);
       const screenings = Math.floor(Math.random() * 100) + 50; // Random data between 50-150
       const users = Math.floor(screenings * 0.7); // Users are typically 70% of screenings
-      
+
       return {
         month,
         screenings,
@@ -148,14 +148,14 @@ export default function AdminDashboard() {
 
   const exportAnonymizedCSV = () => {
     const rows = [];
-    rows.push(['type','id','name','role','institution','createdAt'].join(','));
+    rows.push(['type', 'id', 'name', 'role', 'institution', 'createdAt'].join(','));
     users.forEach(u => {
       const a = anonymize(u);
-      rows.push([ 'user', a.id || '', `"${(a.name||'').replace(/"/g,'""')}"`, a.role || '', a.institution || '', a.createdAt ? (a.createdAt.seconds ? new Date(a.createdAt.seconds*1000).toISOString() : new Date(a.createdAt).toISOString()) : '' ].join(','));
+      rows.push(['user', a.id || '', `"${(a.name || '').replace(/"/g, '""')}"`, a.role || '', a.institution || '', a.createdAt ? (a.createdAt.seconds ? new Date(a.createdAt.seconds * 1000).toISOString() : new Date(a.createdAt).toISOString()) : ''].join(','));
     });
     counsellors.forEach(c => {
       const a = anonymize(c);
-      rows.push([ 'counsellor', a.id || '', `"${(a.name||'').replace(/"/g,'""')}"`, a.specialization || '', a.institution || '', a.createdAt ? (a.createdAt.seconds ? new Date(a.createdAt.seconds*1000).toISOString() : new Date(a.createdAt).toISOString()) : '' ].join(','));
+      rows.push(['counsellor', a.id || '', `"${(a.name || '').replace(/"/g, '""')}"`, a.specialization || '', a.institution || '', a.createdAt ? (a.createdAt.seconds ? new Date(a.createdAt.seconds * 1000).toISOString() : new Date(a.createdAt).toISOString()) : ''].join(','));
     });
     download('anonymized-data.csv', rows.join('\n'), 'text/csv');
   };
@@ -170,9 +170,9 @@ export default function AdminDashboard() {
       download('phq9-summary.csv', summary, 'text/csv');
       return;
     }
-    const rows = [['userId','score','risk','date'].join(',')];
+    const rows = [['userId', 'score', 'risk', 'date'].join(',')];
     (phq9Data.entries || []).forEach(e => {
-      rows.push([ e.userId || '', e.score || '', e.risk || '', e.date || '' ].join(','));
+      rows.push([e.userId || '', e.score || '', e.risk || '', e.date || ''].join(','));
     });
     download('phq9-report.csv', rows.join('\n'), 'text/csv');
   };
@@ -182,7 +182,7 @@ export default function AdminDashboard() {
   return (
     <div className="px-4 sm:px-6 py-6">
       {/* Action Buttons (wired) */}
-  <div className="flex flex-wrap gap-4 mb-8 w-full justify-center">
+      <div className="flex flex-wrap gap-4 mb-8 w-full justify-center">
         <button onClick={exportAnalyticsReport} className="bg-[#FF8C42] text-white px-6 py-3 rounded-lg hover:bg-[#e6732f] transition">
           Export Analytics Report
         </button>
@@ -202,8 +202,8 @@ export default function AdminDashboard() {
           </div>
           <div className="bg-white p-4 rounded-lg shadow">
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-[#FF8C42] rounded-full flex items-center justify-center text-white font-bold">
-                {adminProfile?.name?.charAt(0) || 'A'}
+              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-white font-bold">
+                <img src="/admin.png" className="w-10 h-10" />
               </div>
               <div>
                 <div className="font-semibold">{adminProfile?.name || 'Admin User'}</div>
@@ -217,8 +217,8 @@ export default function AdminDashboard() {
       {/* Institution Filter */}
       <div className="mb-6">
         <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Institution:</label>
-        <select 
-          value={selectedInstitution} 
+        <select
+          value={selectedInstitution}
           onChange={(e) => setSelectedInstitution(e.target.value)}
           className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8C42]"
         >
@@ -305,14 +305,14 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-  {/* Counsellor Registration Cards */}
-  <div className="mb-8" id="counsellor">
+      {/* Counsellor Registration Cards */}
+      <div className="mb-8" id="counsellor">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">Counsellor Registration Information</h2>
           <div className="flex items-center space-x-4">
             <label className="text-sm font-medium text-gray-700">Filter by Institution:</label>
-            <select 
-              value={selectedCounsellorInstitution} 
+            <select
+              value={selectedCounsellorInstitution}
               onChange={(e) => setSelectedCounsellorInstitution(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8C42] text-sm"
             >
@@ -344,7 +344,7 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-500">{counsellor.email || 'N/A'}</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => openCounsellorModal(counsellor)}
                 className="absolute bottom-4 right-4 bg-[#FF8C42] text-white px-3 py-1.5 rounded-md hover:bg-[#e6732f] transition text-xs"
               >
@@ -354,8 +354,8 @@ export default function AdminDashboard() {
           )) : (
             <div className="col-span-full text-center py-8">
               <p className="text-gray-500">
-                {selectedCounsellorInstitution === 'all' 
-                  ? 'No counsellors found in the database.' 
+                {selectedCounsellorInstitution === 'all'
+                  ? 'No counsellors found in the database.'
                   : `No counsellors found for ${selectedCounsellorInstitution}.`}
               </p>
             </div>
@@ -363,14 +363,14 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-  {/* User Registration Cards */}
-  <div className="mb-8" id="user">
+      {/* User Registration Cards */}
+      <div className="mb-8" id="user">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold text-gray-900">User Registration Information</h2>
           <div className="flex items-center space-x-4">
             <label className="text-sm font-medium text-gray-700">Filter by Institution:</label>
-            <select 
-              value={selectedUserInstitution} 
+            <select
+              value={selectedUserInstitution}
               onChange={(e) => setSelectedUserInstitution(e.target.value)}
               className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8C42] text-sm"
             >
@@ -402,7 +402,7 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-500">{user.email || 'N/A'}</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => openUserModal(user)}
                 className="absolute bottom-4 right-4 bg-[#FF8C42] text-white px-3 py-1.5 rounded-md hover:bg-[#e6732f] transition text-xs"
               >
@@ -412,8 +412,8 @@ export default function AdminDashboard() {
           )) : (
             <div className="col-span-full text-center py-8">
               <p className="text-gray-500">
-                {selectedUserInstitution === 'all' 
-                  ? 'No users found in the database.' 
+                {selectedUserInstitution === 'all'
+                  ? 'No users found in the database.'
                   : `No users found for ${selectedUserInstitution}.`}
               </p>
             </div>
@@ -427,7 +427,7 @@ export default function AdminDashboard() {
         <p className="text-sm text-gray-600">A consolidated overview of counsellors, users and PHQ-9 statistics.</p>
       </div>
 
-  {/* Institution-Specific Data */}
+      {/* Institution-Specific Data */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-semibold mb-4">Institution Overview</h3>
@@ -454,8 +454,8 @@ export default function AdminDashboard() {
                 <span className="text-sm">{institution.name}</span>
                 <div className="flex items-center space-x-2">
                   <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-[#FF8C42] h-2 rounded-full" 
+                    <div
+                      className="bg-[#FF8C42] h-2 rounded-full"
                       style={{ width: `${(institution.counsellorCount / Math.max(...institutions.map(i => i.counsellorCount))) * 100}%` }}
                     ></div>
                   </div>
@@ -495,8 +495,8 @@ export default function AdminDashboard() {
                 <span className="text-sm">Minimal Risk</span>
                 <div className="flex items-center space-x-2">
                   <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-green-500 h-2 rounded-full" 
+                    <div
+                      className="bg-green-500 h-2 rounded-full"
                       style={{ width: `${(phq9Data.riskDistribution?.minimal || 0) / phq9Data.totalScreenings * 100}%` }}
                     ></div>
                   </div>
@@ -507,8 +507,8 @@ export default function AdminDashboard() {
                 <span className="text-sm">Mild Risk</span>
                 <div className="flex items-center space-x-2">
                   <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-yellow-500 h-2 rounded-full" 
+                    <div
+                      className="bg-yellow-500 h-2 rounded-full"
                       style={{ width: `${(phq9Data.riskDistribution?.mild || 0) / phq9Data.totalScreenings * 100}%` }}
                     ></div>
                   </div>
@@ -519,8 +519,8 @@ export default function AdminDashboard() {
                 <span className="text-sm">Moderate Risk</span>
                 <div className="flex items-center space-x-2">
                   <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-orange-500 h-2 rounded-full" 
+                    <div
+                      className="bg-orange-500 h-2 rounded-full"
                       style={{ width: `${(phq9Data.riskDistribution?.moderate || 0) / phq9Data.totalScreenings * 100}%` }}
                     ></div>
                   </div>
@@ -531,8 +531,8 @@ export default function AdminDashboard() {
                 <span className="text-sm">Severe Risk</span>
                 <div className="flex items-center space-x-2">
                   <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-red-500 h-2 rounded-full" 
+                    <div
+                      className="bg-red-500 h-2 rounded-full"
                       style={{ width: `${(phq9Data.riskDistribution?.severe || 0) / phq9Data.totalScreenings * 100}%` }}
                     ></div>
                   </div>
@@ -550,7 +550,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-bold text-gray-900">Counsellor Details</h3>
-              <button 
+              <button
                 onClick={closeModals}
                 className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
               >
@@ -571,7 +571,7 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-500">{selectedCounsellor.email || 'N/A'}</p>
                 </div>
               </div>
-              
+
               {/* Personal Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
@@ -626,20 +626,20 @@ export default function AdminDashboard() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Registration Date</label>
                     <p className="text-gray-900">
-                      {selectedCounsellor.createdAt ? 
-                        (selectedCounsellor.createdAt.seconds ? 
-                          new Date(selectedCounsellor.createdAt.seconds * 1000).toLocaleDateString() : 
-                          new Date(selectedCounsellor.createdAt).toLocaleDateString()) : 
+                      {selectedCounsellor.createdAt ?
+                        (selectedCounsellor.createdAt.seconds ?
+                          new Date(selectedCounsellor.createdAt.seconds * 1000).toLocaleDateString() :
+                          new Date(selectedCounsellor.createdAt).toLocaleDateString()) :
                         'N/A'}
                     </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Last Updated</label>
                     <p className="text-gray-900">
-                      {selectedCounsellor.updatedAt ? 
-                        (selectedCounsellor.updatedAt.seconds ? 
-                          new Date(selectedCounsellor.updatedAt.seconds * 1000).toLocaleDateString() : 
-                          new Date(selectedCounsellor.updatedAt).toLocaleDateString()) : 
+                      {selectedCounsellor.updatedAt ?
+                        (selectedCounsellor.updatedAt.seconds ?
+                          new Date(selectedCounsellor.updatedAt.seconds * 1000).toLocaleDateString() :
+                          new Date(selectedCounsellor.updatedAt).toLocaleDateString()) :
                         'N/A'}
                     </p>
                   </div>
@@ -682,7 +682,7 @@ export default function AdminDashboard() {
           <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-3xl font-bold text-gray-900">User Details</h3>
-              <button 
+              <button
                 onClick={closeModals}
                 className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
               >
@@ -703,7 +703,7 @@ export default function AdminDashboard() {
                   <p className="text-sm text-gray-500">{selectedUser.email || 'N/A'}</p>
                 </div>
               </div>
-              
+
               {/* Personal Information */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
@@ -762,20 +762,20 @@ export default function AdminDashboard() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Registration Date</label>
                     <p className="text-gray-900">
-                      {selectedUser.createdAt ? 
-                        (selectedUser.createdAt.seconds ? 
-                          new Date(selectedUser.createdAt.seconds * 1000).toLocaleDateString() : 
-                          new Date(selectedUser.createdAt).toLocaleDateString()) : 
+                      {selectedUser.createdAt ?
+                        (selectedUser.createdAt.seconds ?
+                          new Date(selectedUser.createdAt.seconds * 1000).toLocaleDateString() :
+                          new Date(selectedUser.createdAt).toLocaleDateString()) :
                         'N/A'}
                     </p>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Last Login</label>
                     <p className="text-gray-900">
-                      {selectedUser.lastLogin ? 
-                        (selectedUser.lastLogin.seconds ? 
-                          new Date(selectedUser.lastLogin.seconds * 1000).toLocaleDateString() : 
-                          new Date(selectedUser.lastLogin).toLocaleDateString()) : 
+                      {selectedUser.lastLogin ?
+                        (selectedUser.lastLogin.seconds ?
+                          new Date(selectedUser.lastLogin.seconds * 1000).toLocaleDateString() :
+                          new Date(selectedUser.lastLogin).toLocaleDateString()) :
                         'N/A'}
                     </p>
                   </div>

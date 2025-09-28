@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { db, auth } from "../firebase";
-import logo from "../assets/mindsphere-logo.png";
+import logo from "/councellor.png";
 import { collection, getDocs, addDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { toast } from "react-toastify";
 import { getDoc, doc } from "firebase/firestore";
@@ -12,8 +12,8 @@ export default function Booking() {
   const [name, setName] = useState("");
   const [anonymous, setAnonymous] = useState(false);
   const [time, setTime] = useState("");
-  const [contact, setContact] = useState(""); 
-  const [email, setEmail] = useState("");     
+  const [contact, setContact] = useState("");
+  const [email, setEmail] = useState("");
   const [bookingStatus, setBookingStatus] = useState(null);
   const [myBookings, setMyBookings] = useState([]);
   const [counsellorDetails, setCounsellorDetails] = useState(null);
@@ -80,7 +80,7 @@ export default function Booking() {
         setCounsellorDetails(null);
         return;
       }
-      
+
       try {
         const docRef = doc(db, "counsellors", selectedCounsellor.id);
         const docSnap = await getDoc(docRef);
@@ -203,7 +203,7 @@ export default function Booking() {
         createdAt: serverTimestamp(),
         problemDescription: problemDescription.trim(),
       });
-      
+
       // Show success toast
       toast.success(
         <div className="flex flex-col">
@@ -225,17 +225,17 @@ export default function Booking() {
           className: "custom-success-toast",
         }
       );
-      
+
       setBookingStatus("success");
-      
+
       // Auto-close popup after success
       setTimeout(() => {
         handleClosePopup();
       }, 2000);
-      
+
     } catch (error) {
       console.error("Booking failed:", error);
-      
+
       // Show error toast
       toast.error(
         <div className="flex flex-col">
@@ -254,7 +254,7 @@ export default function Booking() {
           className: "custom-error-toast",
         }
       );
-      
+
       setBookingStatus("error");
     } finally {
       setLoading(false);
@@ -382,12 +382,18 @@ export default function Booking() {
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-12">
         {counsellors.map(c => (
           <div key={c.id} className="p-5 border rounded-2xl shadow hover:shadow-xl transition flex flex-col items-center bg-white">
-            <img
-              src={c.image || logo}
-              alt={`${c.name} - Counsellor`}
-              onError={(e) => { e.target.src = logo; }}
-              className="w-24 h-24 rounded-full mb-3 border-2 border-blue-50 object-cover"
-            />
+            {c.image ? (
+              <img
+                src={c.image}
+                alt={`${c.name} - Counsellor`}
+                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = logo; }}
+                className="w-24 h-24 rounded-full mb-3 border-2 border-blue-50 object-cover"
+              />
+            ) : (
+              <div className="w-24 h-24 rounded-full mb-3 border-2 border-blue-50 flex items-center justify-center bg-[#FF8C42] text-white font-bold text-2xl">
+                {c.name?.[0]?.toUpperCase() || "C"}
+              </div>
+            )}
             <h3 className="text-lg sm:text-xl font-semibold text-gray-800 text-center">{c.name}</h3>
             <p className="text-sm text-gray-600 mt-1 text-center">{c.specialization || 'Counselling'}</p>
             <div className="mt-3 text-center text-xs text-gray-500">
@@ -424,16 +430,22 @@ export default function Booking() {
                 display: none;
               }
             `}</style>
-            
+
             {/* Header with Image and Name */}
             <div className="flex items-center gap-4 mb-6">
               <div className="relative">
-                <img 
-                  src={counsellorDetails.image || logo} 
-                  alt={`${counsellorDetails.name} - Counsellor`} 
-                  onError={(e) => e.target.src = logo}
-                  className="w-20 h-20 rounded-full object-cover border-4 border-blue-100 shadow-lg"
-                />
+                {counsellorDetails.image ? (
+                  <img
+                    src={counsellorDetails.image}
+                    alt={`${counsellorDetails.name} - Counsellor`}
+                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = logo; }}
+                    className="w-20 h-20 rounded-full object-cover border-4 border-blue-100 shadow-lg"
+                  />
+                ) : (
+                  <div className="w-20 h-20 rounded-full flex items-center justify-center bg-[#FF8C42] text-white font-bold text-xl border-4 border-blue-100 shadow-lg">
+                    {counsellorDetails.name?.[0]?.toUpperCase() || "C"}
+                  </div>
+                )}
                 <div className="absolute -bottom-2 -right-2 bg-green-500 w-6 h-6 rounded-full border-3 border-white flex items-center justify-center">
                   <div className="w-2 h-2 bg-white rounded-full"></div>
                 </div>
@@ -542,7 +554,7 @@ export default function Booking() {
 
             {/* Action Buttons */}
             <div className="flex gap-3 mt-8">
-              <button 
+              <button
                 className="flex-1 px-4 py-3 rounded-xl hover:transition font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] cursor-pointer"
                 onClick={() => {
                   handleCloseDetailsPopup();
@@ -552,7 +564,7 @@ export default function Booking() {
               >
                 Book Now
               </button>
-              <button 
+              <button
                 className="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium hover:transition font-medium shadow-sm hover:shadow-lg cursor-pointer"
                 onClick={handleCloseDetailsPopup}
               >
@@ -577,12 +589,18 @@ export default function Booking() {
         <div className="fixed inset-0 bg-opacity-70 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 px-4 py-6 sm:py-0">
           <div role="dialog" aria-modal="true" aria-labelledby="book-dialog-title" className="bg-white p-6 rounded-2xl shadow-2xl max-w-xl sm:w-full relative w-full animate-fadeIn smooth-scroll-enhanced momentum-scroll">
             <div className="flex items-center gap-3 mb-4">
-              <img 
-                src={selectedCounsellor.image || logo} 
-                onError={(e) => {e.target.src = logo}} 
-                alt={`${selectedCounsellor.name} - Counsellor`} 
-                className="w-12 h-12 rounded-full object-cover" 
-              />
+              {selectedCounsellor.image ? (
+                <img
+                  src={selectedCounsellor.image}
+                  onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = logo; }}
+                  alt={`${selectedCounsellor.name} - Counsellor`}
+                  className="w-12 h-12 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-12 h-12 rounded-full flex items-center justify-center bg-[#FF8C42] text-white font-bold">
+                  {selectedCounsellor.name?.[0]?.toUpperCase() || "C"}
+                </div>
+              )}
               <div>
                 <h3 id="book-dialog-title" className="text-xl font-bold text-blue-700">
                   Book with {selectedCounsellor.name}
@@ -591,7 +609,7 @@ export default function Booking() {
               </div>
             </div>
 
-            <form className="grid grid-cols-1 sm:grid-cols-2 gap-4" onSubmit={(e) => e.preventDefault()}> 
+            <form className="grid grid-cols-1 sm:grid-cols-2 gap-4" onSubmit={(e) => e.preventDefault()}>
               <div className="sm:col-span-2 flex items-center gap-3">
                 <input
                   id="anonymous"
@@ -649,7 +667,7 @@ export default function Booking() {
                   aria-required="true"
                 />
               </label>
-              
+
               <label className="block sm:col-span-2">
                 <span className="text-gray-700 font-medium">Problem Description</span>
                 <textarea className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1" value={problemDescription} onChange={(e) => setProblemDescription(e.target.value)} placeholder="Describe your concerns if you want"></textarea>
@@ -714,11 +732,10 @@ export default function Booking() {
                     <p className="text-gray-600">
                       ⏰ {b.time ? new Date(b.time).toLocaleString() : '—'}
                     </p>
-                    <span className={`mt-2 inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                      b.status === "booked" ? "bg-blue-100 text-blue-700" :
+                    <span className={`mt-2 inline-block px-3 py-1 rounded-full text-sm font-medium ${b.status === "booked" ? "bg-blue-100 text-blue-700" :
                       b.status === "completed" ? "bg-green-100 text-green-700" :
-                      "bg-gray-100 text-gray-700"
-                    }`}>
+                        "bg-gray-100 text-gray-700"
+                      }`}>
                       {b.status}
                     </span>
                   </div>
@@ -729,5 +746,5 @@ export default function Booking() {
         )}
       </div>
     </div>
-  );  
+  );
 }
