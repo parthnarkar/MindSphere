@@ -18,8 +18,6 @@ import json
 import os
 import re
 import requests
-import smtplib
-from email.message import EmailMessage
 from google.generativeai import client as genai
 # --- Configuration ---
 from difflib import SequenceMatcher
@@ -259,11 +257,13 @@ def detect_intent(message: str) -> dict:
             'danger_level': danger if isinstance(danger, str) else str(danger),
             'metadata': metadata
         }
-        # If model marks high danger, notify counsellor
+        # If model marks high danger, mark the result for external escalation.
+        # SMTP-based notifications were removed from this module.
         if result['danger_level'].lower() == 'high':
-            subject = f"High-risk message detected (intent={result['intent']})"
-            body = f"A high-risk message was detected by the intent classifier.\n\nMessage:\n{message}\n\nModel output:\n{json.dumps(parsed, indent=2)}"
-            _send_smtp_notification(subject, body)
+            md = result.get('metadata') or {}
+            md['escalation_required'] = True
+            md['escalation_note'] = 'High danger detected; escalate externally (SMTP removed)'
+            result['metadata'] = md
         return result
     except Exception as e:
         try:
