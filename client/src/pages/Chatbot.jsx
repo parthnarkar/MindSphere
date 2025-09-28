@@ -255,7 +255,7 @@ export default function Chatbot({ user }) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 p-15">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 p-13">
       <div className="relative rounded-2xl shadow-xl overflow-hidden bg-white/70 backdrop-blur-sm border border-gray-200">
         <div className="px-6 py-4 border-b flex items-center justify-between gap-4">
           <div>
