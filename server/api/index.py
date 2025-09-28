@@ -87,8 +87,6 @@ def api_chat():
 		except Exception as e:
 			return jsonify({"error": "Model generation failed", "details": str(e)}), 500
 		return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence')})
-
-	# Normal flow: include detected intent in prompt, ask model for coping/strategies
 	prompt = helpers.build_coping_prompt(f"[intent={detected.get('intent')}] {user_message}")
 	try:
 		text = modelutils.generate_coping_text(prompt)
@@ -96,6 +94,68 @@ def api_chat():
 		# Surface the model error to the client (5xx). Caller requested strict model-only behavior.
 		return jsonify({"error": "Model generation failed", "details": str(e)}), 500
 	return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence')})
+
+
+@bp.route('/api/chat/session', methods=['POST', 'GET', 'OPTIONS'])
+def api_chat_session():
+    """Create a new chat session (POST) or list sessions (GET).
+
+    POST body: { user_email?: str }
+    GET query: ?email=... (optional) — when omitted returns recent sessions globally
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        email = data.get('user_email') or None
+        sid = dbutils.create_chat_session(email)
+        if not sid:
+            return jsonify({"error": "could not create session"}), 500
+        return jsonify({"session_id": sid}), 201
+
+    # GET -> list sessions (optionally filtered by email)
+    email = request.args.get('email') or None
+    sessions = dbutils.get_sessions_by_email(email)
+    return jsonify({"sessions": sessions})
+
+
+@bp.route('/api/chat/session/<session_id>/messages', methods=['GET', 'POST', 'OPTIONS'])
+def api_chat_session_messages(session_id):
+    if request.method == 'OPTIONS':
+        return '', 204
+    if request.method == 'GET':
+        email = request.args.get('email') or None
+        msgs = dbutils.get_session_messages(email, session_id)
+        if msgs is None:
+            return jsonify({"messages": []})
+        return jsonify({"messages": msgs})
+
+    # POST -> append a message
+    data = request.get_json() or {}
+    email = data.get('user_email') or None
+    message = data.get('message') or {}
+    if not session_id or not message:
+        return jsonify({"error": "session_id and message required"}), 400
+    # ensure timestamp
+    if 'timestamp' not in message:
+        message['timestamp'] = datetime.utcnow()
+    ok = dbutils.append_message_to_session(session_id, message)
+    if ok:
+        return jsonify({"ok": True}), 201
+    return jsonify({"error": "could not append message"}), 500
+
+
+@bp.route('/api/chat/session/<session_id>', methods=['DELETE', 'OPTIONS'])
+def api_chat_session_delete(session_id):
+	if request.method == 'OPTIONS':
+		return '', 204
+	try:
+		ok = dbutils.delete_chat_session(session_id)
+		if ok:
+			return jsonify({"ok": True}), 200
+		return jsonify({"error": "not found"}), 404
+	except Exception as e:
+		return jsonify({"error": str(e)}), 500
 
 
 
