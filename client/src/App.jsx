@@ -129,7 +129,7 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
         <div className="text-center">
-          <img src="/public/mindsphere-logo.png" alt="Loading..." className="animate-pulse h-25 w-25 mx-auto" />
+          <img src="/mindsphere-logo.png" alt="Loading..." className="animate-pulse h-25 w-25 mx-auto" />
         </div>
       </div>
     );
