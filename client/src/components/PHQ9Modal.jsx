@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import { API } from "../hooks/helper";
+import { toast } from 'react-toastify';
 
 export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
   const questions = useMemo(() => [
@@ -17,7 +18,6 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
   const [answers, setAnswers] = useState(Array(9).fill(null));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [toast, setToast] = useState({ visible: false, message: "", type: "info" });
   const toastTimer = useRef(null);
 
   if (!open) return null;
@@ -53,23 +53,22 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
           const errBody = await res.json();
           if (errBody && errBody.error) msg = errBody.error;
         } catch (_) {}
-        // show error toast
-        setToast({ visible: true, message: msg, type: "error" });
+        // show global error toast
+        toast.error(msg);
         setSubmitting(false);
         return;
       }
 
-      // success
-      setToast({ visible: true, message: "Submitted successfully", type: "success" });
+      // success: show global toast and local toast
+      toast.success('PHQ-9 submitted successfully');
       onSubmitted && onSubmitted();
       // auto-close modal shortly after showing toast
       toastTimer.current = setTimeout(() => {
         onClose && onClose();
-        setToast((t) => ({ ...t, visible: false }));
       }, 1200);
     } catch (e) {
       const msg = e.message || "Submission failed";
-      setToast({ visible: true, message: msg, type: "error" });
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
@@ -123,38 +122,7 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
           </button>
         </div>
       {/* Toast popup */}
-      {toast.visible && (
-        <div className="fixed top-6 right-6 z-50" aria-live="polite">
-          <div
-            role="status"
-            className={`max-w-sm w-full px-4 py-3 rounded-lg shadow-lg flex items-start gap-3 ${toast.type === "success" ? "bg-emerald-50 border border-emerald-200" : toast.type === "error" ? "bg-red-50 border border-red-200" : "bg-gray-50 border"}`}
-          >
-            <div className="flex-shrink-0 mt-0.5">
-              {toast.type === "success" ? (
-                <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center">✓</div>
-              ) : toast.type === "error" ? (
-                <div className="w-8 h-8 rounded-full bg-red-100 text-red-700 flex items-center justify-center">!</div>
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center">i</div>
-              )}
-            </div>
-            <div className="flex-1 text-sm text-gray-800">{toast.message}</div>
-            <button
-              onClick={() => {
-                if (toastTimer.current) {
-                  clearTimeout(toastTimer.current);
-                  toastTimer.current = null;
-                }
-                setToast((t) => ({ ...t, visible: false }));
-              }}
-              className="text-gray-500 hover:text-gray-700 ml-2"
-              aria-label="Close notification"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Local in-modal toast removed; using global react-toastify to show notifications. */}
       </div>
     </div>
   );

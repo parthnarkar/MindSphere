@@ -20,6 +20,65 @@ function formatSessionName(s) {
   return `Chat ${pad(d.getDate())}/${pad(d.getMonth()+1)}/${String(d.getFullYear()).slice(-2)}/${pad(d.getHours())}/${pad(d.getMinutes())}/${pad(d.getSeconds())}`;
 }
 
+// Safely format message text: escape HTML, convert URLs to links,
+// support simple markdown (**bold**, *italic*, `code`) and preserve newlines.
+function formatMessageText(text) {
+  const t = String(text || "");
+  // Normalize literal backslash-n sequences ("\\n") into real newlines so
+  // responses that include escaped newlines render as line breaks.
+  // This leaves real newline characters intact.
+  const normalized = t.replace(/\r?\\n/g, '\n');
+
+  // escape HTML to avoid XSS
+  function escapeHtml(str) {
+    return str.replace(/[&<>"']/g, function (c) {
+      return ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+      })[c];
+    });
+  }
+
+  let out = escapeHtml(normalized);
+
+  // linkify URLs (http/https)
+  out = out.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">$1</a>');
+
+  // inline code `code`
+  out = out.replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded">$1</code>');
+
+  // bold **bold**
+  out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+  // italic *italic* (avoid matching bold syntax)
+  out = out.replace(/(^|[^*])\*([^*][^*]*?)\*([^*]|$)/g, function (_, a, b, c) {
+    return a + '<em>' + b + '</em>' + c;
+  });
+
+  // preserve newlines
+  // Preserve newlines. Also preserve leading spaces/tabs that follow a newline
+  // (e.g. "\n  " -> "<br/>&nbsp;&nbsp;") so indentation from responses is visible.
+  out = out.replace(/\n([ \t]+)/g, function (_, ws) {
+    let rep = '';
+    for (let i = 0; i < ws.length; i++) {
+      if (ws[i] === '\t') {
+        // expand tab to 4 non-breaking spaces
+        rep += '&nbsp;&nbsp;&nbsp;&nbsp;';
+      } else {
+        rep += '&nbsp;';
+      }
+    }
+    return '<br/>' + rep;
+  });
+  // remaining newlines (with no following spaces) -> <br/>
+  out = out.replace(/\n/g, '<br/>');
+
+  return out;
+}
+
 export default function Chatbot({ user }) {
   // if a user is provided (from App.jsx), scope sessions to their email
   const email = user?.email ? String(user.email).toLowerCase() : null;
@@ -225,17 +284,25 @@ export default function Chatbot({ user }) {
                 <div key={i} className={`flex items-start gap-3 ${m.from === "user" ? "justify-end" : "justify-start"}`}>
                   {m.from === "bot" && (
                     <div className="flex-shrink-0">
-                      <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">B</div>
+                      <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">
+                        <img src="/mindsphere-logo.png" alt="Logo" className="w-7 h-7" />
+                      </div>
                     </div>
                   )}
 
                   <div className={`max-w-[78%] px-4 py-2 rounded-xl shadow-sm ${m.from === "user" ? "bg-blue-600 text-white rounded-br-none" : "bg-white text-gray-800 rounded-bl-none border"}`}>
-                    <div className="whitespace-pre-wrap leading-relaxed">{m.text}</div>
+                    <div
+                      className="whitespace-pre-wrap leading-relaxed"
+                      // we format/escape/linkify markdown-like text via formatMessageText
+                      dangerouslySetInnerHTML={{ __html: formatMessageText(m.text) }}
+                    />
                   </div>
 
                   {m.from === "user" && (
                     <div className="flex-shrink-0">
-                      <div className="w-9 h-9 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold">Y</div>
+                        <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">
+                          <img src="/user.png" alt="Logo" className="w-7 h-7" />
+                        </div>
                     </div>
                   )}
                 </div>

@@ -141,10 +141,17 @@ export default function Resources() {
     [YT_KEY]
   );
 
-  // Trigger search when query changes
+  // Only clear results when user clears the query. Actual search is performed
+  // only when the user submits the form (onSubmit -> doSearch).
   useEffect(() => {
-    doSearch(query);
-  }, [query, doSearch]);
+    if (!query || query.trim().length === 0) {
+      setYtResults([]);
+      setWikiResults([]);
+      setBookResults([]);
+      setLocalResources([]);
+      setError(null);
+    }
+  }, [query]);
 
   const onSubmit = (e) => {
     e.preventDefault();
