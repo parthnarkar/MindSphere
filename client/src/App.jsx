@@ -8,6 +8,7 @@ import Resources from "./pages/Resources";
 import AdminDashboard from "./pages/AdminDashboard";
 import PeerToPeer from "./pages/Peer-to-Peer";
 import CounsellorDashboard from "./pages/CounsellorDashboard";
+import Profile from "./pages/Profile";
 import { onAuthChange, logoutUser } from "./services/auth";
 import PHQ9Modal from "./components/PHQ9Modal";
 import { API } from "./hooks/helper";
@@ -104,22 +105,101 @@ function App() {
         />
       )}
       <Routes>
-        <Route path="/chatbot" element={<PrivateRoute user={user}><Chatbot user={user} /></PrivateRoute>} />
-        <Route path="/peer-to-peer" element={<PrivateRoute user={user}><PeerToPeer /></PrivateRoute>} />
-        <Route path="/booking" element={<PrivateRoute user={user}><Booking counsellors={counsellors} /></PrivateRoute>} />
-        <Route path="/resources" element={<PrivateRoute user={user}><Resources /></PrivateRoute>} />
-        <Route path="/admin-dashboard" element={<AdminRoute user={user}><AdminDashboard /></AdminRoute>} />
-        <Route path="/CounsellorDashboard" element={<CounsellorRoute user={user}><CounsellorDashboard /></CounsellorRoute>} />
-        {/* Redirect logged-in users from login back to their dashboard */}
-        <Route path="/login" element={<Navigate to={
-          user.role === "admin" ? "/admin-dashboard" :
-          user.role === "counsellor" ? "/CounsellorDashboard" : "/chatbot"
-        } />} />
-        {/* Fallback redirect for any other authenticated route */}
-        <Route path="*" element={<Navigate to={
-          user.role === "admin" ? "/admin-dashboard" :
-          user.role === "counsellor" ? "/CounsellorDashboard" : "/chatbot"
-        } />} />
+        {/* Login / Redirect */}
+        <Route
+          path="/"
+          element={
+            // If not logged in, show auth page
+            !user ? (
+              <AuthPage />
+            ) : // If logged in but not signed up, redirect to auth/signup for completion
+            !user.signedUp ? (
+              <AuthPage />
+            ) : // signed-up: route by role
+            user.role === "admin" ? (
+              <Navigate to="/admin-dashboard" />
+            ) : user.role === "counsellor" ? (
+              <Navigate to="/CounsellorDashboard" />
+            ) : (
+              <Navigate to="/chatbot" />
+            )
+          }
+        />
+        <Route path="/login" element={<AuthPage />} />
+  {/* admin-login now uses the unified AuthPage with defaultRole='admin' */}
+  {/* /admin-login removed - unified auth route at '/' handles all roles */}
+
+        {/* Protected Pages */}
+        <Route
+          path="/chatbot"
+          element={
+            <PrivateRoute user={user}>
+              <Chatbot user={user} />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/peer-to-peer"
+          element={
+            <PrivateRoute user={user}>
+              <PeerToPeer />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/booking"
+          element={
+            <PrivateRoute user={user}>
+              <Booking counsellors={counsellors} />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/resources"
+          element={
+            <PrivateRoute user={user}>
+              <Resources />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <PrivateRoute user={user}>
+              <Profile />
+            </PrivateRoute>
+          }
+        />
+
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute user={user}>
+              <AdminDashboard />
+            </AdminRoute>
+          }
+        />
+
+        {/* Admin-only routes */}
+        <Route
+          path="/admin-dashboard"
+          element={
+            <AdminRoute user={user}>
+              <AdminDashboard />
+            </AdminRoute>
+          }
+        />
+
+        {/* Counsellor-only route */}
+        <Route
+          path="/CounsellorDashboard"
+          element={
+            <CounsellorRoute user={user}>
+              <CounsellorDashboard />
+            </CounsellorRoute>
+          }
+        />
       </Routes>
     </Layout>
   );
