@@ -110,7 +110,7 @@ const AuthPage = ({ defaultRole } = {}) => {
     e.preventDefault();
     setError("");
     try {
-      await registerUser(email, password, role, role === "counsellor" ? { name, specialization } : { name });
+      const result = await registerUser(email, password, role, role === "counsellor" ? { name, specialization } : { name });
       
       // Show success toast
       toast.success(
@@ -131,7 +131,24 @@ const AuthPage = ({ defaultRole } = {}) => {
         }
       );
       
-      setIsLogin(true);
+      // Set firstLogin flag for users
+      if (role === 'user') {
+        try {
+          sessionStorage.setItem('firstLogin', '1');
+        } catch (storageErr) {
+          console.warn('sessionStorage set failed', storageErr);
+        }
+      }
+      
+      // Navigate based on role - REMOVE setIsLogin(true) and ADD navigation
+      if (role === 'admin') {
+        navigate('/admin-dashboard');
+      } else if (role === 'counsellor') {
+        navigate('/CounsellorDashboard');
+      } else {
+        navigate('/chatbot');
+      }
+      
     } catch (err) {
       setError(err.message || "Signup failed");
       

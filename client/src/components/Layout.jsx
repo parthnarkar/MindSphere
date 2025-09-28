@@ -10,7 +10,7 @@ export default function Layout({ user, onLogout, onShowPhq9, children }) {
       {user && <Header user={user} onLogout={onLogout} onShowPhq9={onShowPhq9} />}
 
       {/* main should grow and be offset by header height when header is present */}
-      <main className={`flex-1 max-w-8xl mx-auto w-full px-4 sm:px-6 lg:px-8 ${user ? 'pt-16' : ''}`}>
+      <main className={`flex-1 max-w-8xl mx-auto w-full px-4 sm:px-6 lg:px-8 ${user ? 'pt-24' : ''}`}>
         {children}
       </main>
 

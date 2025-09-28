@@ -9,6 +9,7 @@ import AdminDashboard from "./pages/AdminDashboard";
 import PeerToPeer from "./pages/Peer-to-Peer";
 import CounsellorDashboard from "./pages/CounsellorDashboard";
 import Profile from "./pages/Profile";
+import CounsellorProfile from "./pages/CounsellorProfile";
 import { onAuthChange, logoutUser } from "./services/auth";
 import PHQ9Modal from "./components/PHQ9Modal";
 import { API } from "./hooks/helper";
@@ -181,6 +182,16 @@ function App() {
           }
         />
 
+        {/* <Route
+          path="/Adminprofile"
+          element={
+            <AdminRoute user={user}>
+              <AdminProfile />
+            </AdminRoute>
+          }
+        /> */}
+
+
         {/* Admin-only routes */}
         <Route
           path="/admin-dashboard"
@@ -197,6 +208,15 @@ function App() {
           element={
             <CounsellorRoute user={user}>
               <CounsellorDashboard />
+            </CounsellorRoute>
+          }
+        />
+
+        <Route
+          path="/CounsellorProfile"
+          element={
+            <CounsellorRoute user={user}>
+              <CounsellorProfile />
             </CounsellorRoute>
           }
         />

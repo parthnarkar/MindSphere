@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
 
+
 export default function Header({ user, onLogout, onShowPhq9 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
@@ -89,9 +90,6 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
       <NavLink to="/resources" className={baseLink}>
         Resources
       </NavLink>
-      <NavLink to="/profile" className={baseLink}> {/* ✅ Add this */}
-        Profile
-      </NavLink>
     </>
   );
 
@@ -164,7 +162,11 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
             {/* Profile Avatar */}
             {user && (
               <button
-                onClick={() => navigate("/profile")}
+                onClick={() => {
+                  if (user.role === "user") navigate("/profile"); // 👈 admin profile page
+                  else if (user.role === "counsellor") navigate("/CounsellorProfile"); // 👈 counsellor profile page
+                  // else navigate("/profile"); // 👤 default user profile page
+                }}
                 className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md hover:scale-105 transition"
                 title="Your Profile"
               >
@@ -181,6 +183,7 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                 )}
               </button>
             )}
+
 
             {/* Logout */}
             <button
