@@ -16,6 +16,17 @@ const CounsellorDashboard = () => {
   const [showPhqModal, setShowPhqModal] = useState(false);
   const [activePhqEntries, setActivePhqEntries] = useState([]);
   const [activeAppointment, setActiveAppointment] = useState(null);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
+  const [userResources, setUserResources] = useState([]);
+  const [userChatHistory, setUserChatHistory] = useState([]);
+  const [userPosts, setUserPosts] = useState([]);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportMarkdown, setReportMarkdown] = useState('');
+  const [showReportPreview, setShowReportPreview] = useState(false);
+  const [MarkdownComponent, setMarkdownComponent] = useState(null);
+  const [remarkGfmPlugin, setRemarkGfmPlugin] = useState(null);
+  const [mdLoadError, setMdLoadError] = useState(false);
 
   // Form state
   // showProfileForm can be boolean or an object { open: true, allowEditIdentity: true }
@@ -24,6 +35,26 @@ const CounsellorDashboard = () => {
   const [profileLoadingState, setProfileLoadingState] = useState(true);
 
   const BACKEND = API;
+
+  const [apptFilter, setApptFilter] = useState('New'); // New | Accepted | Rejected
+
+  // Try to dynamically load react-markdown and remark-gfm so dev server won't fail
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const mod = await import(/* @vite-ignore */ 'react-markdown');
+        const gfm = await import(/* @vite-ignore */ 'remark-gfm');
+        if (!mounted) return;
+        setMarkdownComponent(() => mod.default || mod);
+        setRemarkGfmPlugin(() => gfm.default || gfm);
+      } catch (e) {
+        console.warn('react-markdown/remark-gfm not available:', e);
+        if (mounted) setMdLoadError(true);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // Fetch counsellor info
   useEffect(() => {
@@ -60,6 +91,18 @@ const CounsellorDashboard = () => {
   }, []);
 
   // Fetch appointments
+  // Listen for details loaded event dispatched by loadDetailsForUser
+  useEffect(() => {
+    const handler = (e) => {
+      const d = e.detail || {};
+      setUserResources(d.resourcesList || []);
+      setUserChatHistory(d.chatMsgs || []);
+      setUserPosts(d.posts || []);
+      setDetailsLoading(false);
+    };
+    window.addEventListener('mindsphere:detailsLoaded', handler);
+    return () => window.removeEventListener('mindsphere:detailsLoaded', handler);
+  }, []);
   useEffect(() => {
     const fetchAppointments = async () => {
       if (!auth.currentUser) return;
@@ -135,7 +178,9 @@ const CounsellorDashboard = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case "booked": return "bg-blue-100 text-blue-700";
+      case "accepted": return "bg-green-100 text-green-700";
       case "completed": return "bg-green-100 text-green-700";
+      case "rejected": return "bg-red-100 text-red-700";
       case "cancelled": return "bg-red-100 text-red-700";
       default: return "bg-gray-100 text-gray-700";
     }
@@ -279,11 +324,21 @@ const CounsellorDashboard = () => {
       {/* Booking Appointments Section */}
       <div className="mb-8">
   <h2 className="text-xl sm:text-2xl font-bold text-blue-700 mb-4">Booking Appointments</h2>
+        <div className="mb-4 flex items-center gap-2">
+          <button className={`px-3 py-1 rounded ${apptFilter==='New' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`} onClick={() => setApptFilter('New')}>New</button>
+          <button className={`px-3 py-1 rounded ${apptFilter==='Accepted' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`} onClick={() => setApptFilter('Accepted')}>Accepted</button>
+          <button className={`px-3 py-1 rounded ${apptFilter==='Rejected' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700'}`} onClick={() => setApptFilter('Rejected')}>Rejected</button>
+        </div>
         {appointments.length === 0 ? (
           <p className="text-gray-500 text-center py-10 text-base sm:text-lg">No booked appointments yet.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            {appointments.map((appt) => (
+            {appointments.filter(appt => {
+              if (apptFilter === 'New') return !appt.status || appt.status === 'booked' || appt.status === 'pending' || appt.status === 'new';
+              if (apptFilter === 'Accepted') return appt.status === 'accepted' || appt.status === 'completed';
+              if (apptFilter === 'Rejected') return appt.status === 'rejected' || appt.status === 'cancelled';
+              return true;
+            }).map((appt) => (
               <div key={appt.id} className="bg-white shadow-lg rounded-2xl p-4 sm:p-5 lg:p-6 hover:shadow-2xl transition duration-300 w-full">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-2">
                   <h3 className="text-lg sm:text-xl font-semibold text-gray-800">{appt.userName}</h3>
@@ -295,34 +350,84 @@ const CounsellorDashboard = () => {
                   {appt.email && <p className="truncate">📧 {appt.email}</p>}
                   {appt.contact && <p>📞 {appt.contact}</p>}
                   <p>⏰ {new Date(appt.time).toLocaleString()}</p>
-                  {appt.createdAt && (
-                    <p className="text-gray-400 text-xs">
-                      Booked on: {appt.createdAt.toDate().toLocaleString()}
-                    </p>
-                  )}
+                
                   
                   <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
-                        // find PHQ entries for this appointment's email
+                        // show details modal
                         const email = (appt.email || appt.user_email || appt.userEmail || '').toString().toLowerCase();
                         const entries = phqData.filter(p => (p.user_email || p.userEmail || '').toString().toLowerCase() === email);
                         setActivePhqEntries(entries);
                         setActiveAppointment(appt);
-                        setShowPhqModal(true);
+                                        setShowDetailsModal(true);
+                                        // load extra details (resources, chat history, peer posts)
+                                        loadDetailsForUser(email, appt);
                       }}
                       className="px-4 py-2 rounded bg-blue-50 text-blue-700 text-sm sm:text-base hover:bg-blue-100 w-full sm:w-auto text-center"
                     >
-                      View PHQ
+                      View Details
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => { /* future: navigate to appointment details */ }}
-                      className="px-4 py-2 rounded bg-gray-50 text-gray-700 text-sm sm:text-base hover:bg-gray-100 w-full sm:w-auto text-center"
-                    >
-                      Details
-                    </button>
+                    {/* Show accept/reject only when appointment is not already accepted/rejected */}
+                    {!(appt.status === 'accepted' || appt.status === 'rejected' || appt.status === 'completed' || appt.status === 'cancelled') && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            // Accept appointment: update Firestore and notify server to persist in MongoDB
+                            try {
+                              const docRef = doc(db, 'appointments', appt.id);
+                              await setDoc(docRef, { status: 'accepted' }, { merge: true });
+                              // update local state
+                              setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status: 'accepted' } : a));
+                              // notify backend
+                              try {
+                                await fetch(`${BACKEND}/api/appointments/${appt.id}/status`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: 'accepted', counsellorId: auth.currentUser.uid, email: appt.email })
+                                });
+                              } catch (e) {
+                                console.warn('Backend status update failed', e);
+                              }
+                            } catch (e) {
+                              console.error('Failed to accept appointment', e);
+                              alert('Failed to accept appointment');
+                            }
+                          }}
+                          className="px-4 py-2 rounded bg-green-50 text-green-700 text-sm sm:text-base hover:bg-green-100 w-full sm:w-auto text-center"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            // Reject appointment
+                            try {
+                              const docRef = doc(db, 'appointments', appt.id);
+                              await setDoc(docRef, { status: 'rejected' }, { merge: true });
+                              setAppointments(prev => prev.map(a => a.id === appt.id ? { ...a, status: 'rejected' } : a));
+                              try {
+                                await fetch(`${BACKEND}/api/appointments/${appt.id}/status`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ status: 'rejected', counsellorId: auth.currentUser.uid, email: appt.email })
+                                });
+                              } catch (e) {
+                                console.warn('Backend status update failed', e);
+                              }
+                            } catch (e) {
+                              console.error('Failed to reject appointment', e);
+                              alert('Failed to reject appointment');
+                            }
+                          }}
+                          className="px-4 py-2 rounded bg-red-50 text-red-700 text-sm sm:text-base hover:bg-red-100 w-full sm:w-auto text-center"
+                        >
+                          Reject
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -377,9 +482,333 @@ const CounsellorDashboard = () => {
           </div>
         </div>
       )}
+      {/* Details modal (View Details) */}
+      {showDetailsModal && activeAppointment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowDetailsModal(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-4 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-lg font-semibold">Appointment Details: {activeAppointment.userName || activeAppointment.email}</h3>
+                <p className="text-sm text-gray-500">Time: {activeAppointment.time ? new Date(activeAppointment.time).toLocaleString() : 'Unknown'}</p>
+              </div>
+              <div>
+                <button onClick={() => setShowDetailsModal(false)} className="px-3 py-1 rounded bg-gray-100">Close</button>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div><div className="text-xs text-gray-500">Name</div><div className="font-medium">{activeAppointment.userName}</div></div>
+                <div><div className="text-xs text-gray-500">Email</div><div className="font-medium">{activeAppointment.email}</div></div>
+                <div><div className="text-xs text-gray-500">Contact</div><div className="font-medium">{activeAppointment.contact}</div></div>
+                <div><div className="text-xs text-gray-500">Status</div><div className="font-medium">{activeAppointment.status}</div></div>
+                <div className="sm:col-span-2"><div className="text-xs text-gray-500">Notes</div><div className="font-medium whitespace-pre-wrap">{activeAppointment.notes || '—'}</div></div>
+              </div>
+
+              <div>
+                <h4 className="text-sm font-semibold">PHQ-9 Submissions</h4>
+                {activePhqEntries.length === 0 ? (
+                  <p className="text-sm text-gray-500">No submissions.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {activePhqEntries.map(p => (
+                      <div key={p.id || p.user_email} className="border rounded p-2 bg-gray-50">
+                        <div className="text-xs text-gray-500">Submitted: {p.timestamp ? new Date(p.timestamp).toLocaleString() : 'Unknown'}</div>
+                        <div className="text-sm">Score: <strong>{p.totalScore ?? p.total_score}</strong> — {p.severity}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Additional client activity: resources accessed, chat history, peer posts */}
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold">Resources accessed / suggested</h4>
+                {detailsLoading ? (
+                  <p className="text-sm text-gray-500">Loading...</p>
+                ) : (userResources && userResources.length > 0) ? (
+                  <ul className="space-y-2">
+                    {userResources.map(r => (
+                      <li key={r.id || r.title} className="text-sm text-gray-700">
+                        <a className="text-indigo-600 underline" href={r.url || '#'} target="_blank" rel="noreferrer">{r.title || r.name}</a>
+                        {r.type && <span className="ml-2 text-xs text-gray-500">{r.type}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-gray-500">No resource activity found. Showing suggested resources.</p>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold">Chatbot history</h4>
+                {detailsLoading ? (
+                  <p className="text-sm text-gray-500">Loading...</p>
+                ) : (userChatHistory && userChatHistory.length > 0) ? (
+                  <div className="space-y-2">
+                    {userChatHistory.map((m, i) => (
+                      <div key={i} className="text-sm text-gray-700 bg-gray-50 p-2 rounded">
+                        <div className="text-xs text-gray-500">{m.timestamp ? new Date(m.timestamp).toLocaleString() : ''} — {m.from || m.role || ''}</div>
+                        <div className="mt-1 whitespace-pre-wrap">{m.text || m.message || m.content || ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No chat history found for this user.</p>
+                )}
+              </div>
+
+              <div className="mt-4">
+                <h4 className="text-sm font-semibold">Peer-to-peer posts</h4>
+                {detailsLoading ? (
+                  <p className="text-sm text-gray-500">Loading...</p>
+                ) : (userPosts && userPosts.length > 0) ? (
+                  <div className="space-y-2">
+                    {userPosts.map(p => (
+                      <div key={p.id} className="border rounded p-2 bg-gray-50">
+                        <div className="text-sm font-medium">{p.title}</div>
+                        <div className="text-xs text-gray-500">{p.createdAt}</div>
+                        <div className="text-sm mt-1">{p.content || p.body || ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">No peer posts found for this user.</p>
+                )}
+              </div>
+                  <div className="mt-4 flex items-center justify-between">
+                <div className="text-sm text-gray-600">Actions</div>
+                <div className="flex items-center gap-2">
+                  <button onClick={async () => {
+                    // Ask server to generate a concise report and show preview; allow user to download PDF
+                    if (!activeAppointment) return;
+                    setReportLoading(true);
+                    try {
+                      const payload = {
+                        email: (activeAppointment.email || '').toLowerCase(),
+                        appointment: activeAppointment,
+                        phqEntries: activePhqEntries
+                      };
+                      const res = await fetch(`${BACKEND}/api/appointments/${encodeURIComponent(activeAppointment.id)}/report`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                      });
+                      if (!res.ok) {
+                        const txt = await res.text();
+                        throw new Error(txt || 'Report generation failed');
+                      }
+                      const body = await res.json();
+                      const md = body.report || '';
+                      setReportMarkdown(md);
+                      setShowReportPreview(true);
+                    } catch (e) {
+                      console.error('Report generation failed', e);
+                      alert('Report generation failed: ' + (e.message || e));
+                    } finally {
+                      setReportLoading(false);
+                    }
+                  }} className={`px-3 py-2 rounded ${reportLoading ? 'bg-indigo-300' : 'bg-indigo-600'} text-white`} disabled={reportLoading}>
+                    {reportLoading ? (
+                      <span className="flex items-center gap-2"><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8z"></path></svg> Generating...</span>
+                    ) : 'Generate Report'}
+                  </button>
+                  {showReportPreview && (
+                    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/40 p-4">
+                      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full p-4 max-h-[90vh] overflow-y-auto" onClick={(e)=>e.stopPropagation()}>
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold">Report Preview</h3>
+                          <div className="flex items-center gap-2">
+                            <button onClick={async () => {
+                              // Download PDF using stored markdown
+                              try {
+                                const mdToRender = reportMarkdown || '';
+                                const { jsPDF } = await import('jspdf');
+                                const doc2 = new jsPDF({ unit: 'pt', format: 'a4' });
+                                const margin = 40;
+                                const pageWidth = (doc2.internal.pageSize && (doc2.internal.pageSize.width || (doc2.internal.pageSize.getWidth && doc2.internal.pageSize.getWidth()))) || 595.28; // fallback A4
+                                const pageHeight = (doc2.internal.pageSize && (doc2.internal.pageSize.height || (doc2.internal.pageSize.getHeight && doc2.internal.pageSize.getHeight()))) || 841.89; // fallback A4
+                                const usableWidth = pageWidth - margin * 2;
+                                const usableHeight = pageHeight - margin * 2;
+
+                                let y = margin;
+                                const lines = (mdToRender || '').split('\n');
+                                // Try to find a title (first H1 or fallback)
+                                const titleLine = lines.find(l => l.trim().startsWith('#')) || `Client Report: ${(activeAppointment.userName||'Client')}`;
+
+                                // Helper to add a new page and reset y
+                                const addNewPage = () => {
+                                  doc2.addPage();
+                                  y = margin;
+                                };
+
+                                // Render title on first page
+                                doc2.setFont('helvetica', 'bold');
+                                doc2.setFontSize(18);
+                                const title = titleLine.replace(/^#+\s*/, '');
+                                const titleLines = doc2.splitTextToSize(title, usableWidth);
+                                doc2.text(titleLines, margin, y);
+                                y += (titleLines.length * 18) + 8;
+
+                                doc2.setFontSize(11);
+                                doc2.setFont('helvetica', 'normal');
+
+                                // Generic line height settings
+                                const lineHeight = 12; // for body text
+                                const bulletLineHeight = 12;
+
+                                for (let i = 0; i < lines.length; i++) {
+                                  let rawLine = lines[i] || '';
+                                  let line = rawLine.trim();
+                                  if (!line) { y += 6; if (y > margin + usableHeight) addNewPage(); continue; }
+
+                                  const headingMatch = line.match(/^(#{1,6})\s*(.*)$/);
+                                  if (headingMatch) {
+                                    const level = headingMatch[1].length;
+                                    const content = headingMatch[2].replace(/\*\*(.*?)\*\*/g, '$1').replace(/#/g, '').trim();
+                                    if (!content) { y += 6; if (y > margin + usableHeight) addNewPage(); continue; }
+                                    doc2.setFont('helvetica', 'bold');
+                                    let fontSize = 12;
+                                    if (level === 1) fontSize = 16;
+                                    else if (level === 2) fontSize = 13;
+                                    else fontSize = 12;
+                                    doc2.setFontSize(fontSize);
+                                    const wrapped = doc2.splitTextToSize(content, usableWidth);
+                                    // paginate if needed
+                                    if (y + (wrapped.length * (fontSize + 2)) > margin + usableHeight) addNewPage();
+                                    doc2.text(wrapped, margin, y);
+                                    y += wrapped.length * (fontSize + 2) + 6;
+                                    doc2.setFont('helvetica', 'normal');
+                                    doc2.setFontSize(11);
+                                    continue;
+                                  }
+
+                                  if (/^(-|\u2022)\s+/.test(line)) {
+                                    const text = line.replace(/^(-|\u2022)\s+/, '• ');
+                                    const cleaned = text.replace(/\*\*(.*?)\*\*/g, '$1');
+                                    const splitted = doc2.splitTextToSize(cleaned, usableWidth - 12);
+                                    // if not enough space, add page
+                                    if (y + (splitted.length * bulletLineHeight) > margin + usableHeight) addNewPage();
+                                    doc2.text(splitted, margin + 8, y);
+                                    y += splitted.length * bulletLineHeight + 4;
+                                    // continue to next line
+                                    continue;
+                                  }
+
+                                  const sanitized = line.replace(/\*\*(.*?)\*\*/g, '$1').replace(/#/g, '').trim();
+                                  const para = doc2.splitTextToSize(sanitized, usableWidth);
+                                  // paginate if para will overflow
+                                  if (y + (para.length * lineHeight) > margin + usableHeight) {
+                                    // If paragraph is longer than a page, write in chunks
+                                    let idx = 0;
+                                    while (idx < para.length) {
+                                      const remainingLines = para.slice(idx);
+                                      // estimate how many lines fit
+                                      const fitLines = Math.floor((margin + usableHeight - y) / lineHeight) || 1;
+                                      const chunk = remainingLines.slice(0, fitLines);
+                                      doc2.text(chunk, margin, y);
+                                      idx += chunk.length;
+                                      y += chunk.length * lineHeight;
+                                      if (idx < para.length) addNewPage();
+                                    }
+                                  } else {
+                                    doc2.text(para, margin, y);
+                                    y += para.length * lineHeight + 6;
+                                  }
+
+                                  if (y > margin + usableHeight) addNewPage();
+                                }
+
+                                const filename = `${(activeAppointment.userName||'report').replace(/\s+/g,'_')}_report.pdf`;
+                                doc2.save(filename);
+                              } catch (e) {
+                                console.error('Download failed', e);
+                                alert('Download failed: ' + (e.message || e));
+                              }
+                            }} className="px-3 py-1 rounded bg-green-600 text-white">Download PDF</button>
+                            <button onClick={() => { setShowReportPreview(false); setReportMarkdown(''); }} className="px-3 py-1 rounded bg-gray-100">Close</button>
+                          </div>
+                        </div>
+                        <div className="mt-3 border rounded p-3 bg-white max-h-[70vh] overflow-y-auto prose prose-sm">
+                          {MarkdownComponent && remarkGfmPlugin ? (
+                            <MarkdownComponent remarkPlugins={[remarkGfmPlugin]}>{reportMarkdown}</MarkdownComponent>
+                          ) : mdLoadError ? (
+                            <div className="text-sm text-gray-500 whitespace-pre-wrap font-mono">{reportMarkdown || 'No preview available.'}</div>
+                          ) : (
+                            <div className="text-sm text-gray-500">Loading preview renderer...</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
 };
+
+// Helper: fetch resources, chat history and peer posts for a given user email
+async function fetchJsonSafe(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+}
+
+async function loadDetailsForUser(email, appt) {
+  // This file-level helper will be imported by the component via closure. Use backend BASE from window if necessary.
+  const base = typeof API !== 'undefined' ? API : '';
+  // set loading
+  try {
+    // attempt to get suggested/local resources
+    const resourcesRes = await fetchJsonSafe(`${base}/api/resources`);
+    const resourcesList = (resourcesRes && resourcesRes.resources) || [];
+
+    // chat sessions by email
+    let chatMsgs = [];
+    if (email) {
+      const sessionsRes = await fetchJsonSafe(`${base}/api/chat/session?email=${encodeURIComponent(email)}`);
+      const sessions = (sessionsRes && sessionsRes.sessions) || [];
+      if (sessions.length > 0) {
+        // pick the most recent session id
+        const sid = sessions[0].id;
+        const msgsRes = await fetchJsonSafe(`${base}/api/chat/session/${encodeURIComponent(sid)}/messages?email=${encodeURIComponent(email)}`);
+        chatMsgs = (msgsRes && msgsRes.messages) || msgsRes || [];
+      }
+    }
+
+    // peer posts
+    let posts = [];
+    if (email) {
+      const postsRes = await fetchJsonSafe(`${base.replace(/\/$/, '')}/api/posts`);
+      const allPosts = postsRes || [];
+      // filter by author/email heuristics
+      posts = Array.isArray(allPosts) ? allPosts.filter(p => {
+        const a = (p.author || p.authorName || p.email || '').toString().toLowerCase();
+        return a && email && a.includes(email.split('@')[0]);
+      }) : [];
+    }
+
+    // Update state in the component via the global window - find React hook setters
+    try {
+      // we assume the component setUserResources etc are in scope; fall back to window update via event
+      // Using a custom DOM event to deliver the loaded data to the component instance
+      window.dispatchEvent(new CustomEvent('mindsphere:detailsLoaded', { detail: { resourcesList, chatMsgs, posts } }));
+    } catch (e) {
+      console.warn('Could not dispatch details event', e);
+    }
+  } catch (e) {
+    console.warn('loadDetailsForUser failed', e);
+  }
+}
+
 
 export default CounsellorDashboard;

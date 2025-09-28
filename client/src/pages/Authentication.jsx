@@ -332,7 +332,13 @@ const AuthPage = ({ defaultRole } = {}) => {
                 </svg>
                 <span className="text-[#263238]">Continue with Google</span>
               </button>
-            
+              
+              {/* Info message for Google sign-in */}
+              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-sm text-blue-700">
+                  <span className="font-medium">Note:</span> Google sign-in is only available for existing users who have already signed up with email and password.
+                </p>
+              </div>
             </>
           )}
 

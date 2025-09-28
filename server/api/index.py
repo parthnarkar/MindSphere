@@ -17,6 +17,16 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 app.config.update({'JSON_SORT_KEYS': False})
 
+
+# Ensure any CORS preflight (OPTIONS) is answered early with a success status so browsers allow the actual request.
+@app.before_request
+def _handle_global_options():
+	# If it's an OPTIONS preflight, return an empty 200 response; Flask-CORS will add the required headers.
+	if request.method == 'OPTIONS':
+		from flask import make_response
+		resp = make_response('', 200)
+		return resp
+
 # Define a local blueprint to keep routes organized inside this master file
 bp = Blueprint('api', __name__)
 
@@ -294,6 +304,46 @@ def api_resources():
 		resources.insert(0, item)
 		return jsonify(item), 201
 	return jsonify({"resources": resources})
+
+
+
+@bp.route('/api/posts', methods=['GET'])
+def api_posts():
+	"""Return forum posts. If Mongo configured, read from `posts` collection.
+
+	Optional query param: ?email=... will filter posts by exact email or author/name substring.
+	"""
+	try:
+		email = (request.args.get('email') or '').strip().lower()
+		namepart = ''
+		if email:
+			namepart = email.split('@')[0]
+		if getattr(dbutils, 'mongo_db', None) is not None:
+			coll = dbutils.mongo_db.get_collection('posts')
+			query = {}
+			if email:
+				# match by email or author/name containing the local-part
+				query = {'$or': [{'email': email}, {'author': {'$regex': namepart, '$options': 'i'}}, {'authorName': {'$regex': namepart, '$options': 'i'}}]}
+			docs = list(coll.find(query).sort([('createdAt', -1)]).limit(200))
+			out = []
+			for d in docs:
+				p = dict(d)
+				if '_id' in p:
+					try:
+						p['id'] = str(p.pop('_id'))
+					except Exception:
+						p.pop('_id', None)
+				# convert createdAt
+				try:
+					if 'createdAt' in p and hasattr(p['createdAt'], 'isoformat'):
+						p['createdAt'] = p['createdAt'].isoformat()
+				except Exception:
+					pass
+				out.append(p)
+			return jsonify({'posts': out})
+		return jsonify({'posts': []})
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
 
 
 
@@ -638,6 +688,282 @@ def api_admin_profile():
 		return jsonify(profile)
 	except Exception as e:
 		return jsonify({'error': str(e)}), 500
+
+
+
+@bp.route('/api/appointments/<appt_id>/status', methods=['POST', 'OPTIONS'])
+def api_appointment_status(appt_id):
+		"""Update appointment status (accepted/rejected) and persist to MongoDB if configured.
+
+		Body: { status: 'accepted'|'rejected', counsellorId?: str, email?: str }
+		"""
+		# Handle CORS preflight
+		if request.method == 'OPTIONS':
+			return '', 204
+		try:
+			data = request.get_json() or {}
+			status = data.get('status')
+			counsellorId = data.get('counsellorId')
+			email = data.get('email')
+			if status not in ('accepted', 'rejected'):
+				return jsonify({'error': 'invalid status'}), 400
+
+			# Persist to MongoDB if available
+			if getattr(dbutils, 'mongo_db', None) is not None:
+				coll = dbutils.mongo_db.get_collection('appointments')
+				try:
+					res = coll.update_one({'_id': appt_id}, {'$set': {'status': status, 'updatedAt': datetime.utcnow(), 'counsellorId': counsellorId}}, upsert=False)
+					# If not matched by _id string, try matching by id field
+					if res.matched_count == 0:
+						coll.update_one({'id': appt_id}, {'$set': {'status': status, 'updatedAt': datetime.utcnow(), 'counsellorId': counsellorId}}, upsert=False)
+				except Exception:
+					# Fallback: try updating by string-id field
+					try:
+						coll.update_one({'id': appt_id}, {'$set': {'status': status, 'updatedAt': datetime.utcnow(), 'counsellorId': counsellorId}}, upsert=False)
+					except Exception:
+						pass
+			# send notification to user (best-effort)
+			try:
+				helpers._send_notification_email(email or '', f"Appointment {status}", f"Your appointment (id: {appt_id}) has been {status} by the counsellor.")
+			except Exception:
+				pass
+
+			return jsonify({'ok': True}), 200
+		except Exception as e:
+			return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/appointments/<appt_id>/report', methods=['POST', 'OPTIONS'])
+def api_appointment_report(appt_id):
+		"""Generate a one-page professional report for an appointment using the configured generative AI.
+
+		Expects JSON body (optional) with fields:
+		  - email: user's email (preferred)
+		  - appointment: optional appointment object (fallback if DB not available)
+		  - phqEntries: optional list of PHQ entries to include
+
+		Returns JSON: { report: "...markdown-like text..." }
+		"""
+		# Handle CORS preflight
+		if request.method == 'OPTIONS':
+			return '', 204
+		try:
+			data = request.get_json() or {}
+			email = (data.get('email') or '').lower()
+			appt_obj = data.get('appointment') or None
+
+			# Try to load appointment from MongoDB if available and appt_id looks like an id
+			appt = None
+			if getattr(dbutils, 'mongo_db', None) is not None:
+				try:
+					coll = dbutils.mongo_db.get_collection('appointments')
+					# try by _id (ObjectId) or by id string
+					try:
+						from bson.objectid import ObjectId
+						appt_doc = coll.find_one({'_id': ObjectId(appt_id)})
+					except Exception:
+						appt_doc = coll.find_one({'id': appt_id})
+					if appt_doc:
+						appt = dict(appt_doc)
+						if '_id' in appt:
+							appt['id'] = str(appt.pop('_id'))
+				except Exception:
+					appt = None
+
+			# fallback to provided appointment info
+			if not appt and appt_obj:
+				appt = appt_obj
+
+			# If email not provided, try to infer from appointment
+			if not email and appt:
+				email = (appt.get('email') or appt.get('user_email') or '').lower()
+
+			# Gather PHQ-9 entries for the user
+			phq_entries = []
+			try:
+				if email:
+					phq_coll = dbutils.get_phq9_collection()
+					if phq_coll is not None:
+						docs = list(phq_coll.find({'user_email': email}).sort('timestamp', -1).limit(10))
+						for d in docs:
+							dd = dict(d)
+							if '_id' in dd:
+								try:
+									dd['id'] = str(dd.pop('_id'))
+								except Exception:
+									dd.pop('_id', None)
+							phq_entries.append(dd)
+			except Exception:
+				phq_entries = data.get('phqEntries') or []
+
+			# Chat history: get recent sessions and messages
+			chat_msgs = []
+			try:
+				if email:
+					sessions = dbutils.get_sessions_by_email(email)
+					if sessions:
+						sid = sessions[0].get('id')
+						msgs = dbutils.get_session_messages(email, sid)
+						if msgs:
+							chat_msgs = msgs[-100:] if isinstance(msgs, list) else []
+			except Exception:
+				chat_msgs = []
+
+			# Peer posts: try to read from posts collection
+			posts = []
+			try:
+				if getattr(dbutils, 'mongo_db', None) is not None:
+					posts_coll = dbutils.mongo_db.get_collection('posts')
+					if posts_coll is not None and email:
+						namepart = email.split('@')[0]
+						docs = list(posts_coll.find({'$or': [{'author': {'$regex': namepart, '$options': 'i'}}, {'authorName': {'$regex': namepart, '$options': 'i'}}, {'email': email}] }).sort('createdAt', -1).limit(20))
+						for p in docs:
+							pp = dict(p)
+							if '_id' in pp:
+								try:
+									pp['id'] = str(pp.pop('_id'))
+								except Exception:
+									pp.pop('_id', None)
+							posts.append(pp)
+			except Exception:
+				posts = []
+
+			# Resources: include any server-side resources list and appointment-level resources
+			resources_list = []
+			try:
+				resources_list = list(resources)
+			except Exception:
+				resources_list = []
+			# Also include appointment.accessedResources if present
+			if appt and isinstance(appt, dict) and appt.get('accessedResources'):
+				try:
+					resources_list = resources_list + list(appt.get('accessedResources'))
+				except Exception:
+					pass
+
+			# Build prompt for model
+			user_meta = {
+				'name': (appt.get('userName') if appt else None) or data.get('name') or 'Unknown',
+				'email': email or 'Unknown',
+				'contact': (appt.get('contact') if appt else None) or data.get('contact') or ''
+			}
+
+			# Limit sizes for prompt
+			chat_excerpt = []
+			try:
+				for m in (chat_msgs or [])[-40:]:
+					t = m.get('text') or m.get('message') or m.get('content') or ''
+					who = m.get('from') or m.get('role') or ''
+					chat_excerpt.append(f"[{who}] {t}")
+			except Exception:
+				chat_excerpt = []
+
+			posts_excerpt = []
+			try:
+				for p in (posts or [])[:20]:
+					posts_excerpt.append(f"{p.get('title','(no title)')}: {p.get('content') or p.get('body') or ''}")
+			except Exception:
+				posts_excerpt = []
+
+			# Build a PHQ-9 excerpt and a detailed per-question breakdown (map 0..3 to text)
+			phq_excerpt = []
+			phq_detailed_lines = []
+			try:
+				# mapping per the PHQ-9 options
+				phq_map = {0: 'Not at all', 1: 'Several days', 2: 'More than half the days', 3: 'Nearly every day'}
+				for p in (phq_entries or [])[:5]:
+					score = p.get('total_score') or p.get('totalScore') or ''
+					ts = p.get('timestamp') or p.get('submittedAt') or ''
+					phq_excerpt.append(f"{ts} — Score: {score}")
+					# include per-question breakdown if answers available
+					answers = p.get('answers') or p.get('response') or p.get('answers_int') or []
+					if isinstance(answers, list) and len(answers) >= 9:
+						phq_detailed_lines.append(f"Entry: {ts} — Total score: {score}")
+						for qi in range(min(9, len(answers))):
+							val = None
+							try:
+								val = int(answers[qi])
+							except Exception:
+								val = None
+							phq_text = phq_map.get(val, str(val) if val is not None else 'Unknown')
+							phq_detailed_lines.append(f"Q{qi+1}: {phq_text}")
+			except Exception:
+				phq_excerpt = []
+				phq_detailed_lines = []
+
+			prompt_sections = []
+			prompt_sections.append(f"Client name: {user_meta['name']}")
+			prompt_sections.append(f"Email: {user_meta['email']}")
+			if user_meta.get('contact'):
+				prompt_sections.append(f"Contact: {user_meta['contact']}")
+			# Include PHQ-9 summary lines and detailed per-question breakdown when available
+			prompt_sections.append('\nPHQ-9 entries:')
+			prompt_sections.extend(phq_excerpt or ['No PHQ-9 entries found.'])
+			if phq_detailed_lines:
+				prompt_sections.append('\nPHQ-9 detailed breakdown (most recent first):')
+				prompt_sections.extend(phq_detailed_lines[:200])
+			prompt_sections.append('\nRecent chat messages (most recent last):')
+			prompt_sections.extend(chat_excerpt or ['No chat history found.'])
+			prompt_sections.append('\nRecent forum posts:')
+			prompt_sections.extend(posts_excerpt or ['No forum posts found.'])
+			prompt_sections.append('\nResources known/suggested:')
+			for r in (resources_list or [])[:20]:
+				prompt_sections.append(f"- {r.get('title') or r.get('name') or r}")
+
+			# Ask model to format a concise one-page report in Markdown style with headings and bullets
+			# NOTE: request the model avoid inline bold markup ("**bold**") because the client renderer prefers headings and simple bullets.
+			model_prompt = (
+				helpers.COPING_SYSTEM_PROMPT + "\n" +
+				"You are a professional counselor assistant. Create a concise, one-page clinical-style report for a counsellor, using the information below. "
+				"Structure the report with a clear Title, a short Client Info section (name, email, contact), followed by sections: 'PHQ-9 Summary', 'Chatbot History', 'Forum Posts', and 'Resources Accessed'. "
+				"Use Markdown-style headings (e.g., # Title, ## Section) and bullet points for lists. Keep each section brief and focused; use bullet points for key observations. Begin with the user's basic details. Avoid any medical diagnosis; instead summarize severity and notable indicators. Limit output to approximately one page.\n\n"
+				"IMPORTANT: Do NOT use inline bold markup like **bold text**. Use heading lines starting with #/## and simple '-' bullets. Avoid other Markdown decorations; plain text is preferred.\n\n"
+				"DATA:\n" + "\n".join(prompt_sections) + "\n\nProduce the report now in Markdown format."
+			)
+
+			# Prefer a deterministic, structured report generated locally for reliability and privacy.
+			try:
+				structured = helpers.generate_structured_report(user_meta, phq_entries, chat_msgs, posts, resources_list)
+			except Exception:
+				structured = None
+
+			# If deterministic generator produced output, return it. Otherwise, fall back to the model-based prompt.
+			if structured:
+				# Build a structured PHQ breakdown to help the client render deterministic per-question bullets
+				phq_breakdown = []
+				try:
+					for p in (phq_entries or [])[:5]:
+						item = dict(p)
+						if '_id' in item:
+							try:
+								item['id'] = str(item.pop('_id'))
+							except Exception:
+								item.pop('_id', None)
+						# ensure timestamp is JSON-safe
+						try:
+							if 'timestamp' in item and hasattr(item['timestamp'], 'isoformat'):
+								item['timestamp'] = item['timestamp'].isoformat()
+						except Exception:
+							pass
+						# normalize answers to ints when possible
+						answers = item.get('answers') or item.get('response') or []
+						if isinstance(answers, list):
+							try:
+								item['answers'] = [int(x) for x in answers]
+							except Exception:
+								pass
+						phq_breakdown.append(item)
+				except Exception:
+					phq_breakdown = []
+				return jsonify({'report': structured, 'phq_breakdown': phq_breakdown}), 200
+			# Fallback to model-based generation (should rarely be needed)
+			try:
+				report_text = modelutils.generate_coping_text(model_prompt)
+			except Exception as e:
+				return jsonify({'error': 'model generation failed', 'details': str(e)}), 500
+			return jsonify({'report': report_text}), 200
+		except Exception as e:
+			return jsonify({'error': str(e)}), 500
 
 
 
