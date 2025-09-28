@@ -351,6 +351,231 @@ def api_clients_with_phq():
 		return jsonify({'error': str(e)}), 500
 
 
+# Admin API endpoints
+@bp.route('/api/admin', methods=['GET'])
+def api_admin_metrics():
+	"""Return overall admin metrics for dashboard."""
+	try:
+		# Get basic metrics
+		active_users = 0
+		screenings = 0
+		bookings_count = len(bookings)
+		
+		# Count PHQ-9 screenings
+		phq_coll = dbutils.get_phq9_collection()
+		if phq_coll is not None:
+			screenings = phq_coll.count_documents({})
+		elif hasattr(dbutils, 'phq9_in_memory'):
+			screenings = len(dbutils.phq9_in_memory)
+		
+		# Count active users (unique emails from PHQ-9)
+		unique_emails = set()
+		if phq_coll is not None:
+			for doc in phq_coll.find({}, {'user_email': 1}):
+				unique_emails.add(doc.get('user_email', ''))
+		elif hasattr(dbutils, 'phq9_in_memory'):
+			for doc in dbutils.phq9_in_memory:
+				unique_emails.add(doc.get('user_email', ''))
+		active_users = len(unique_emails)
+		
+		return jsonify({
+			'activeUsers': active_users,
+			'screenings': screenings,
+			'bookings': bookings_count
+		})
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/admin/institutions', methods=['GET'])
+def api_admin_institutions():
+	"""Return institution data for admin dashboard."""
+	try:
+		# Mock institution data - in a real implementation, this would come from a database
+		institutions = [
+			{
+				'id': 'university-tech',
+				'name': 'University of Technology',
+				'studentCount': 15000,
+				'counsellorCount': 12,
+				'screeningCount': 450
+			},
+			{
+				'id': 'college-arts',
+				'name': 'College of Arts & Sciences',
+				'studentCount': 8500,
+				'counsellorCount': 8,
+				'screeningCount': 320
+			},
+			{
+				'id': 'community-college',
+				'name': 'Community College District',
+				'studentCount': 12000,
+				'counsellorCount': 6,
+				'screeningCount': 280
+			}
+		]
+		return jsonify(institutions)
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/admin/phq9', methods=['GET'])
+def api_admin_phq9():
+	"""Return PHQ-9 analytics for admin dashboard."""
+	try:
+		phq_coll = dbutils.get_phq9_collection()
+		total_screenings = 0
+		total_score = 0
+		high_risk_cases = 0
+		risk_distribution = {'minimal': 0, 'mild': 0, 'moderate': 0, 'severe': 0}
+		
+		if phq_coll is not None:
+			docs = list(phq_coll.find())
+			total_screenings = len(docs)
+			for doc in docs:
+				score = doc.get('total_score', 0)
+				total_score += score
+				
+				# Risk categorization
+				if score >= 20:
+					risk_distribution['severe'] += 1
+					high_risk_cases += 1
+				elif score >= 15:
+					risk_distribution['moderate'] += 1
+				elif score >= 10:
+					risk_distribution['mild'] += 1
+				else:
+					risk_distribution['minimal'] += 1
+		elif hasattr(dbutils, 'phq9_in_memory'):
+			docs = dbutils.phq9_in_memory
+			total_screenings = len(docs)
+			for doc in docs:
+				score = doc.get('total_score', 0)
+				total_score += score
+				
+				# Risk categorization
+				if score >= 20:
+					risk_distribution['severe'] += 1
+					high_risk_cases += 1
+				elif score >= 15:
+					risk_distribution['moderate'] += 1
+				elif score >= 10:
+					risk_distribution['mild'] += 1
+				else:
+					risk_distribution['minimal'] += 1
+		
+		average_score = total_score / total_screenings if total_screenings > 0 else 0
+		
+		return jsonify({
+			'totalScreenings': total_screenings,
+			'averageScore': average_score,
+			'highRiskCases': high_risk_cases,
+			'riskDistribution': risk_distribution
+		})
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/admin/counsellors', methods=['GET'])
+def api_admin_counsellors():
+	"""Return counsellor registration information for admin dashboard."""
+	try:
+		# Try to fetch from MongoDB first
+		if getattr(dbutils, 'mongo_db', None) is not None:
+			coll = dbutils.mongo_db.get_collection('counsellors')
+			docs = list(coll.find().sort([('createdAt', -1)]).limit(100))
+			counsellors = []
+			for d in docs:
+				counsellor = dict(d)
+				if '_id' in counsellor:
+					counsellor['id'] = str(counsellor.pop('_id'))
+				if 'createdAt' in counsellor:
+					try:
+						counsellor['createdAt'] = counsellor['createdAt'].isoformat()
+					except Exception:
+						counsellor['createdAt'] = str(counsellor['createdAt'])
+				counsellors.append(counsellor)
+			return jsonify(counsellors)
+		
+		# Fallback to empty array if no database
+		return jsonify([])
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/admin/users', methods=['GET'])
+def api_admin_users():
+	"""Return user registration information for admin dashboard."""
+	try:
+		# Try to fetch from MongoDB first
+		if getattr(dbutils, 'mongo_db', None) is not None:
+			coll = dbutils.mongo_db.get_collection('users')
+			docs = list(coll.find().sort([('createdAt', -1)]).limit(100))
+			users = []
+			for d in docs:
+				user = dict(d)
+				if '_id' in user:
+					user['id'] = str(user.pop('_id'))
+				if 'createdAt' in user:
+					try:
+						user['createdAt'] = user['createdAt'].isoformat()
+					except Exception:
+						user['createdAt'] = str(user['createdAt'])
+				if 'lastLogin' in user:
+					try:
+						user['lastLogin'] = user['lastLogin'].isoformat()
+					except Exception:
+						user['lastLogin'] = str(user['lastLogin'])
+				users.append(user)
+			return jsonify(users)
+		
+		# Fallback to empty array if no database
+		return jsonify([])
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/admin/profile', methods=['GET'])
+def api_admin_profile():
+	"""Return admin profile information."""
+	try:
+		# Try to fetch admin profile from MongoDB
+		if getattr(dbutils, 'mongo_db', None) is not None:
+			coll = dbutils.mongo_db.get_collection('users')
+			admin_doc = coll.find_one({'role': 'admin'})
+			if admin_doc:
+				profile = dict(admin_doc)
+				if '_id' in profile:
+					profile['id'] = str(profile.pop('_id'))
+				if 'createdAt' in profile:
+					try:
+						profile['createdAt'] = profile['createdAt'].isoformat()
+					except Exception:
+						profile['createdAt'] = str(profile['createdAt'])
+				if 'lastLogin' in profile:
+					try:
+						profile['lastLogin'] = profile['lastLogin'].isoformat()
+					except Exception:
+						profile['lastLogin'] = str(profile['lastLogin'])
+				profile['permissions'] = ['Full Access', 'Data Export', 'User Management', 'Analytics']
+				return jsonify(profile)
+		
+		# Fallback to default admin profile
+		profile = {
+			'name': 'Admin User',
+			'email': 'admin@mindsphere.edu',
+			'role': 'System Administrator',
+			'lastLogin': '2024-01-15',
+			'permissions': ['Full Access', 'Data Export', 'User Management', 'Analytics'],
+			'registrationDate': '2023-01-01',
+			'status': 'Active'
+		}
+		return jsonify(profile)
+	except Exception as e:
+		return jsonify({'error': str(e)}), 500
+
+
 
 # Register the blueprint now that all routes are ready
 app.register_blueprint(bp)

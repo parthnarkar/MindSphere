@@ -1,14 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { loginUser, registerUser, logoutUser } from "../services/auth";
 import { db } from "../firebase";
 import { collection, query as q, where, getDocs } from "firebase/firestore";
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import bgVideo from "../assets/Login.mp4";
 import logo from "../assets/mindsphere-logo.png";
 
-const AuthPage = () => {
+// Accept an optional prop to default the role selector
+const AuthPage = ({ defaultRole } = {}) => {
   const [isLogin, setIsLogin] = useState(true);
-  const [role, setRole] = useState("user");
+  const [role, setRole] = useState(defaultRole ?? "user");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -16,6 +17,24 @@ const AuthPage = () => {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Initialize role from defaultRole prop or ?role=... query param.
+  // Run only when defaultRole or the query string changes; do NOT include `role` so
+  // user clicks on the role buttons are not overwritten.
+  useEffect(() => {
+    if (typeof defaultRole !== 'undefined') {
+      setRole(defaultRole);
+      return;
+    }
+    try {
+      const params = new URLSearchParams(location.search);
+      const queryRole = params.get('role');
+      if (queryRole) setRole(queryRole);
+    } catch {
+      // ignore malformed query
+    }
+  }, [defaultRole, location.search]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -52,7 +71,12 @@ const AuthPage = () => {
       const acctRole = result && result.role;
       if (!signedUp || acctRole !== role) {
         // Sign them out immediately and show guidance
-        try { await logoutUser(); } catch (_) {}
+        try {
+          await logoutUser();
+        } catch (logoutErr) {
+          // Log but don't block the user feedback flow
+          console.warn('logoutUser failed during role validation', logoutErr);
+        }
         // Friendly message depending on mismatch
         if (!signedUp) {
           setError(`This account has not completed signup. Please sign up as a ${role} first.`);
@@ -63,7 +87,11 @@ const AuthPage = () => {
       }
       // Successful login - set firstLogin flag if applicable
       if (result && result.firstLogin && role === 'user') {
-        try { sessionStorage.setItem('firstLogin', '1'); } catch(e) { /* ignore */ }
+        try {
+          sessionStorage.setItem('firstLogin', '1');
+        } catch (storageErr) {
+          console.warn('sessionStorage set failed', storageErr);
+        }
       }
       // Navigate to root which will redirect based on role
       navigate('/');
@@ -123,6 +151,8 @@ const AuthPage = () => {
             <div className="flex items-center space-x-2">
               <button type="button" onClick={() => setRole('user')} className={`px-4 py-2 rounded-full text-base font-medium cursor-pointer text-[#263238] ${role === 'user' ? 'bg-white/60 text-[#263238]' : 'text-[#90A4AE] hover:text-[#263238]'}`}>User</button>
               <button type="button" onClick={() => setRole('counsellor')} className={`px-4 py-2 rounded-full text-base font-medium cursor-pointer text-[#263238] ${role === 'counsellor' ? 'bg-white/60 text-[#263238]' : 'text-[#90A4AE] hover:text-[#263238]'}`}>Counsellor</button>
+              {/* Only show admin toggle when explicitly requested via defaultRole or when user chooses it */}
+              <button type="button" onClick={() => setRole('admin')} className={`px-4 py-2 rounded-full text-base font-medium cursor-pointer text-[#263238] ${role === 'admin' ? 'bg-white/60 text-[#263238]' : 'text-[#90A4AE] hover:text-[#263238]'}`}>Admin</button>
             </div>
           </div>
 
@@ -161,6 +191,8 @@ const AuthPage = () => {
           <div className="mt-6 text-center text-sm text-cc-text-muted">
             By continuing, you agree to our <a className="text-cc-text-dark underline">Terms</a> and <a className="text-cc-text-dark underline">Privacy Policy</a>.
           </div>
+          
+          {/* No separate admin route — use ?role=admin or the role selector above to access admin. */}
         </div>
       </div>
     </div>

@@ -1,10 +1,36 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 
 export default function Header({ user, onLogout, onShowPhq9 }) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef(null);
   const firstFocusableRef = useRef(null);
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const adminLinkClass = 'px-2 py-1 rounded text-left w-full md:w-auto text-gray-700 hover:text-blue-600 transition truncate whitespace-nowrap';
+
+  const navigateToSection = (id) => {
+    // close mobile menu if open
+    setOpen(false);
+    // if already on admin dashboard, scroll to section
+    if (location.pathname === '/admin-dashboard') {
+      if (!id) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    // otherwise navigate there first, then scroll shortly after
+    navigate('/admin-dashboard');
+    if (!id) return;
+    setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 200);
+  };
 
   // Close on Escape and manage focus
   useEffect(() => {
@@ -24,7 +50,7 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
         try {
           const focusTarget = panelRef.current?.querySelector('a,button');
           if (focusTarget) focusTarget.focus();
-        } catch (e) { /* ignore */ }
+        } catch { /* ignore */ }
       }, 50);
       // prevent body scroll when menu open
       document.body.style.overflow = 'hidden';
@@ -61,6 +87,14 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
           <div className="flex items-center gap-x-8 text-base sm:text-lg font-medium min-w-0 overflow-hidden">
             {user?.role === 'counsellor' ? (
               <NavLink to="/CounsellorDashboard" className={linkClass}>Dashboard</NavLink>
+            ) : user?.role === 'admin' ? (
+              // Keep same styling but change tabs for admin
+              <>
+                <button onClick={() => navigateToSection('')} className={linkClass}>Dashboard</button>
+                <button onClick={() => navigateToSection('counsellor')} className={linkClass}>Councellor</button>
+                <button onClick={() => navigateToSection('user')} className={linkClass}>User</button>
+                <button onClick={() => navigateToSection('overview')} className={linkClass}>Overview</button>
+              </>
             ) : (
               <>
                 <NavLink to="/chatbot" className={linkClass}>Chat</NavLink>
@@ -86,6 +120,13 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
               <div className="flex flex-col gap-2">
                 {user?.role === 'counsellor' ? (
                   <NavLink to="/CounsellorDashboard" className={linkClass} onClick={() => setOpen(false)}>Dashboard</NavLink>
+                ) : user?.role === 'admin' ? (
+                  <>
+                    <button onClick={() => { setOpen(false); navigateToSection(''); }} className={adminLinkClass}>Dashboard</button>
+                    <button onClick={() => { setOpen(false); navigateToSection('counsellor'); }} className={adminLinkClass}>Councellor</button>
+                    <button onClick={() => { setOpen(false); navigateToSection('user'); }} className={adminLinkClass}>User</button>
+                    <button onClick={() => { setOpen(false); navigateToSection('overview'); }} className={adminLinkClass}>Overview</button>
+                  </>
                 ) : (
                   <>
                     <NavLink to="/chatbot" className={linkClass} onClick={() => setOpen(false)}>Chat</NavLink>

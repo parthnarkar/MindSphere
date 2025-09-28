@@ -5,24 +5,23 @@ import Chatbot from "./pages/Chatbot";
 import Screening from "./pages/Screening";
 import Booking from "./pages/Booking";
 import Resources from "./pages/Resources";
-import Admin from "./pages/Admin";
+import AdminDashboard from "./pages/AdminDashboard";
 import PeerToPeer from "./pages/Peer-to-Peer";
 import CounsellorDashboard from "./pages/CounsellorDashboard";
 import { onAuthChange, logoutUser } from "./services/auth";
 import PHQ9Modal from "./components/PHQ9Modal";
 import { API } from "./hooks/helper";
-import { db } from "./firebase";
-import { collection, getDocs } from "firebase/firestore";
 import Header from "./components/Header";
 import Layout from "./components/Layout";
 import CounsellorsGrid from "./components/CounsellorsGrid";
-import { PrivateRoute, CounsellorRoute } from "./components/ProtectedRoutes";
+import { PrivateRoute, CounsellorRoute, AdminRoute } from "./components/ProtectedRoutes";
 
 function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [initialAuthChecked, setInitialAuthChecked] = useState(false);
-  const [counsellors, setCounsellors] = useState([]);
+  // counsellors list is populated by other pages; setCounsellors is unused here
+  const [counsellors, _setCounsellors] = useState([]);
   const [showPhq9, setShowPhq9] = useState(false);
   const [phq9Checked, setPhq9Checked] = useState(false);
   const [firstLoginCandidate, setFirstLoginCandidate] = useState(false);
@@ -171,7 +170,9 @@ function App() {
             !user.signedUp ? (
               <AuthPage />
             ) : // signed-up: route by role
-            user.role === "counsellor" ? (
+            user.role === "admin" ? (
+              <Navigate to="/admin-dashboard" />
+            ) : user.role === "counsellor" ? (
               <Navigate to="/CounsellorDashboard" />
             ) : (
               <Navigate to="/chatbot" />
@@ -179,6 +180,8 @@ function App() {
           }
         />
         <Route path="/login" element={<AuthPage />} />
+  {/* admin-login now uses the unified AuthPage with defaultRole='admin' */}
+  {/* /admin-login removed - unified auth route at '/' handles all roles */}
 
         {/* Protected Pages */}
         <Route
@@ -224,9 +227,19 @@ function App() {
         <Route
           path="/admin"
           element={
-            <PrivateRoute user={user}>
-              <Admin />
-            </PrivateRoute>
+            <AdminRoute user={user}>
+              <AdminDashboard />
+            </AdminRoute>
+          }
+        />
+
+        {/* Admin-only routes */}
+        <Route
+          path="/admin-dashboard"
+          element={
+            <AdminRoute user={user}>
+              <AdminDashboard />
+            </AdminRoute>
           }
         />
 
