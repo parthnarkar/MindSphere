@@ -25,12 +25,9 @@ from difflib import SequenceMatcher
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('MODEL_NAME')
 
-# SMTP configuration for counsellor notifications (optional)
-SMTP_HOST = os.getenv('SMTP_HOST')
-SMTP_PORT = int(os.getenv('SMTP_PORT') or 0)
-SMTP_USER = os.getenv('SMTP_USER')
-SMTP_PASS = os.getenv('SMTP_PASS')
-COUNSELLOR_EMAIL = os.getenv('COUNSELLOR_EMAIL')
+# SMTP/notification handling removed from this module.
+# Configure and send notifications via a dedicated notifications service or
+# background worker. This keeps intent detection fast and side-effect free.
 
 # Single, constant prompt used for all model intent classification calls (per your request).
 # The model should return a strict JSON object and nothing else.
@@ -158,72 +155,8 @@ def build_coping_prompt(user_message: str, history=None) -> str:
     constraints = "Constraints: keep it brief and actionable. Reply conversationally in 2-4 short sentences, ask one quick follow-up question when helpful."
     return f"{COPING_SYSTEM_PROMPT}\n{history_block}User context: {user_message}\n{constraints}"
 
-
-def _send_smtp_notification(subject: str, body: str) -> bool:
-    """Send an SMTP email to COUNSELLOR_EMAIL if SMTP is configured. Returns True on success."""
-    if not (SMTP_HOST and SMTP_PORT and COUNSELLOR_EMAIL):
-        # not configured
-        return False
-    # Delegate to the generic send helper; this centralizes SMTP behavior and logging
-    try:
-        return _send_notification_email(COUNSELLOR_EMAIL, subject, body)
-    except Exception:
-        return False
-
-
-def _send_notification_email(to_email: str, subject: str, body: str) -> bool:
-    """Send an email notification to the specified recipient (best-effort).
-
-    Uses SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASS if configured. Returns True on success.
-    """
-    # Validate SMTP configuration
-    if not (SMTP_HOST and SMTP_PORT):
-        try:
-            print('SMTP not configured; cannot send email to', to_email)
-        except Exception:
-            pass
-        return False
-
-    if not to_email:
-        return False
-
-    # Inner helper to send one message
-    def _send_one(recipient: str) -> bool:
-        try:
-            msg = EmailMessage()
-            msg['Subject'] = subject
-            msg['From'] = SMTP_USER or f"no-reply@{SMTP_HOST}"
-            msg['To'] = recipient
-            msg.set_content(body)
-            if SMTP_PORT == 465:
-                server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
-            else:
-                server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
-                server.starttls()
-            if SMTP_USER and SMTP_PASS:
-                server.login(SMTP_USER, SMTP_PASS)
-            server.send_message(msg)
-            server.quit()
-            return True
-        except Exception as e:
-            try:
-                print('Notification email send failed to', recipient, e)
-            except Exception:
-                pass
-            return False
-
-    # Attempt to send to the requested recipient
-    ok_primary = _send_one(to_email)
-
-    # Also send a copy to the configured COUNSELLOR_EMAIL if present and different
-    ok_cc = True
-    try:
-        if COUNSELLOR_EMAIL and COUNSELLOR_EMAIL != to_email:
-            ok_cc = _send_one(COUNSELLOR_EMAIL)
-    except Exception:
-        ok_cc = False
-
-    return ok_primary or ok_cc
+# Notification helpers (email/SMS) have been removed from this module.
+# Use a dedicated notifications service or a background worker to send alerts.
 
 
 def detect_intent(message: str) -> dict:
