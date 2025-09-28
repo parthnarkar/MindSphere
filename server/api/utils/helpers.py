@@ -18,8 +18,6 @@ import json
 import os
 import re
 import requests
-import smtplib
-from email.message import EmailMessage
 from google.generativeai import client as genai
 # --- Configuration ---
 from difflib import SequenceMatcher
@@ -27,13 +25,6 @@ from difflib import SequenceMatcher
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('MODEL_NAME')
 GEMINI_MODEL = os.getenv('MODEL_NAME')
-
-# SMTP configuration for counsellor notifications (optional)
-SMTP_HOST = os.getenv('SMTP_HOST')
-SMTP_PORT = int(os.getenv('SMTP_PORT') or 0)
-SMTP_USER = os.getenv('SMTP_USER')
-SMTP_PASS = os.getenv('SMTP_PASS')
-COUNSELLOR_EMAIL = os.getenv('COUNSELLOR_EMAIL')
 
 # Single, constant prompt used for all model intent classification calls (per your request).
 # The model should return a strict JSON object and nothing else.
@@ -162,33 +153,8 @@ def build_coping_prompt(user_message: str, history=None) -> str:
     return f"{COPING_SYSTEM_PROMPT}\n{history_block}User context: {user_message}\n{constraints}"
 
 
-def _send_smtp_notification(subject: str, body: str) -> bool:
-    """Send an SMTP email to COUNSELLOR_EMAIL if SMTP is configured. Returns True on success."""
-    if not (SMTP_HOST and SMTP_PORT and COUNSELLOR_EMAIL):
-        # not configured
-        return False
-    try:
-        msg = EmailMessage()
-        msg['Subject'] = subject
-        msg['From'] = SMTP_USER or f"no-reply@{SMTP_HOST}"
-        msg['To'] = COUNSELLOR_EMAIL
-        msg.set_content(body)
-        if SMTP_PORT == 465:
-            server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=10)
-        else:
-            server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10)
-            server.starttls()
-        if SMTP_USER and SMTP_PASS:
-            server.login(SMTP_USER, SMTP_PASS)
-        server.send_message(msg)
-        server.quit()
-        return True
-    except Exception as e:
-        try:
-            print('SMTP send failed:', e)
-        except Exception:
-            pass
-        return False
+# SMTP-based notifications have been removed for this deployment.
+# Any escalation for high-risk messages is now handled outside this module.
 
 
 def detect_intent(message: str) -> dict:
@@ -222,11 +188,13 @@ def detect_intent(message: str) -> dict:
             'danger_level': danger if isinstance(danger, str) else str(danger),
             'metadata': metadata
         }
-        # If model marks high danger, notify counsellor
+        # If model marks high danger, mark the result for external escalation.
+        # SMTP-based notifications were removed from this module.
         if result['danger_level'].lower() == 'high':
-            subject = f"High-risk message detected (intent={result['intent']})"
-            body = f"A high-risk message was detected by the intent classifier.\n\nMessage:\n{message}\n\nModel output:\n{json.dumps(parsed, indent=2)}"
-            _send_smtp_notification(subject, body)
+            md = result.get('metadata') or {}
+            md['escalation_required'] = True
+            md['escalation_note'] = 'High danger detected; escalate externally (SMTP removed)'
+            result['metadata'] = md
         return result
     except Exception as e:
         try:
