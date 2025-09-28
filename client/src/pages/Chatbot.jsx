@@ -3,9 +3,9 @@ import { API } from "../hooks/helper";
 
 // Shared UI classes for consistency
 const btnBase = 'px-3 py-2 rounded-md text-sm font-medium';
-const btnPrimary = `${btnBase} bg-blue-600 text-white hover:bg-blue-700`;
-const btnNeutral = `${btnBase} bg-gray-100 text-gray-800 hover:bg-gray-200`;
-const btnGhost = 'text-xs text-blue-600';
+const btnPrimary = `${btnBase} bg-[#FF8C42] text-white hover:bg-[#e6732f] shadow-sm`;
+const btnNeutral = `${btnBase} bg-white/70 text-[#263238] hover:bg-white border border-gray-200`;
+const btnGhost = 'text-xs text-[#FF8C42]';
 
 // Format session name: Chat DD/MM/YY/HH/MM/SS
 function formatSessionName(s) {
@@ -24,12 +24,8 @@ function formatSessionName(s) {
 // support simple markdown (**bold**, *italic*, `code`) and preserve newlines.
 function formatMessageText(text) {
   const t = String(text || "");
-  // Normalize literal backslash-n sequences ("\\n") into real newlines so
-  // responses that include escaped newlines render as line breaks.
-  // This leaves real newline characters intact.
   const normalized = t.replace(/\r?\\n/g, '\n');
 
-  // escape HTML to avoid XSS
   function escapeHtml(str) {
     return str.replace(/[&<>"']/g, function (c) {
       return ({
@@ -44,8 +40,8 @@ function formatMessageText(text) {
 
   let out = escapeHtml(normalized);
 
-  // linkify URLs (http/https)
-  out = out.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline">$1</a>');
+  // linkify URLs (http/https) — use accent color for links
+  out = out.replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="text-[#FF8C42] underline">$1</a>');
 
   // inline code `code`
   out = out.replace(/`([^`]+)`/g, '<code class="bg-gray-100 px-1 rounded">$1</code>');
@@ -58,14 +54,10 @@ function formatMessageText(text) {
     return a + '<em>' + b + '</em>' + c;
   });
 
-  // preserve newlines
-  // Preserve newlines. Also preserve leading spaces/tabs that follow a newline
-  // (e.g. "\n  " -> "<br/>&nbsp;&nbsp;") so indentation from responses is visible.
   out = out.replace(/\n([ \t]+)/g, function (_, ws) {
     let rep = '';
     for (let i = 0; i < ws.length; i++) {
       if (ws[i] === '\t') {
-        // expand tab to 4 non-breaking spaces
         rep += '&nbsp;&nbsp;&nbsp;&nbsp;';
       } else {
         rep += '&nbsp;';
@@ -73,7 +65,6 @@ function formatMessageText(text) {
     }
     return '<br/>' + rep;
   });
-  // remaining newlines (with no following spaces) -> <br/>
   out = out.replace(/\n/g, '<br/>');
 
   return out;
@@ -264,12 +255,12 @@ export default function Chatbot({ user }) {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 p-6">
-      <div className="relative rounded-2xl shadow-lg overflow-hidden bg-white/10 backdrop-blur-sm border border-white/20">
+    <div className="max-w-6xl mx-auto px-4 sm:px-6 p-15">
+      <div className="relative rounded-2xl shadow-xl overflow-hidden bg-white/70 backdrop-blur-sm border border-gray-200">
         <div className="px-6 py-4 border-b flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-2xl font-semibold">Support Chat</h2>
-            <p className="text-sm text-gray-500 mt-1">Supportive strategies only — not a crisis or medical service. Chat history is saved per session.</p>
+            <h2 className="text-2xl md:text-3xl font-semibold text-[#263238]">Support Chat</h2>
+            <p className="text-sm text-[#90A4AE] mt-1">Supportive strategies only — not a crisis or medical service. Chat history is saved per session.</p>
           </div>
           <div className="flex items-center gap-2">
             <button className={btnNeutral} onClick={() => { setShowModal(true); fetch(`${API}/api/chat/session${sessionsQuery}`).then(r=>r.json()).then(d=>setSessions(d.sessions||[])).catch(()=>{}); }}>History</button>
@@ -284,23 +275,22 @@ export default function Chatbot({ user }) {
                 <div key={i} className={`flex items-start gap-3 ${m.from === "user" ? "justify-end" : "justify-start"}`}>
                   {m.from === "bot" && (
                     <div className="flex-shrink-0">
-                      <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">
+                      <div className="w-9 h-9 bg-[#FF8C42]/10 text-[#FF8C42] rounded-full flex items-center justify-center font-semibold">
                         <img src="/mindsphere-logo.png" alt="Logo" className="w-7 h-7" />
                       </div>
                     </div>
                   )}
 
-                  <div className={`max-w-[78%] px-4 py-2 rounded-xl shadow-sm ${m.from === "user" ? "bg-blue-600 text-white rounded-br-none" : "bg-white text-gray-800 rounded-bl-none border"}`}>
+                  <div className={`max-w-[78%] px-4 py-2 rounded-xl shadow-sm ${m.from === "user" ? "bg-[#FF8C42] text-white rounded-br-none" : "bg-white text-[#263238] rounded-bl-none border border-gray-200"}`}>
                     <div
                       className="whitespace-pre-wrap leading-relaxed"
-                      // we format/escape/linkify markdown-like text via formatMessageText
                       dangerouslySetInnerHTML={{ __html: formatMessageText(m.text) }}
                     />
                   </div>
 
                   {m.from === "user" && (
                     <div className="flex-shrink-0">
-                        <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">
+                        <div className="w-9 h-9 bg-[#FF8C42]/10 text-[#FF8C42] rounded-full flex items-center justify-center font-semibold">
                           <img src="/user.png" alt="Logo" className="w-7 h-7" />
                         </div>
                     </div>
@@ -310,25 +300,24 @@ export default function Chatbot({ user }) {
               {isTyping && (
                 <div className="flex items-start gap-3">
                   <div className="flex-shrink-0">
-                    <div className="w-9 h-9 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-semibold">B</div>
+                    <div className="w-9 h-9 bg-[#FF8C42]/10 text-[#FF8C42] rounded-full flex items-center justify-center font-semibold">B</div>
                   </div>
-                  <div className="max-w-[78%] px-4 py-2 rounded-xl bg-white text-gray-500 rounded-bl-none border italic">Generating...</div>
+                  <div className="max-w-[78%] px-4 py-2 rounded-xl bg-white text-gray-500 rounded-bl-none border border-gray-200 italic">Generating...</div>
                 </div>
               )}
             </div>
 
             <div className="mt-4">
                 <textarea
-                className="w-full border rounded-lg p-3 min-h-[56px] resize-none focus:ring-2 focus:ring-blue-300"
+                className="w-full border border-gray-200 rounded-lg p-3 min-h-[56px] resize-none focus:ring-2 focus:ring-[#FF8C42]/30 shadow-sm"
                 placeholder="Type a message (Shift+Enter for newline)..."
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
-                // allow typing even when session isn't created yet; a session will be auto-created on Send
               />
 
               <div className="flex items-center justify-between m-1">
-                <div className="text-xs text-gray-500 m-2">You can type anytime — a session will be created when you send your first message.</div>
+                <div className="text-xs text-[#90A4AE] m-2">You can type anytime — a session will be created when you send your first message.</div>
                 <div className="flex items-center gap-2">
                   <button className={btnNeutral} onClick={() => setInput("")}>Clear</button>
                   <button className={btnPrimary} onClick={send}>Send</button>
@@ -384,25 +373,25 @@ export function ChatbotModal({ sessions, onClose, onOpen, onDelete }) {
       {/* clickable dimmed backdrop with blur */}
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative w-full mx-4 sm:mx-auto max-w-lg bg-white backdrop-blur-md border border-white/20 rounded-xl shadow-2xl p-4 sm:p-6 max-h-[90vh] overflow-auto">
+      <div className="relative w-full mx-4 sm:mx-auto max-w-lg bg-white border border-gray-200 rounded-xl shadow-2xl p-4 sm:p-6 max-h-[90vh] overflow-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold">Session history</h3>
+          <h3 className="text-lg font-semibold text-[#263238]">Session history</h3>
           <button className={`${btnNeutral} px-2 py-1 text-sm`} onClick={onClose}>Close</button>
         </div>
 
         <div className="space-y-2 max-h-[68vh] overflow-auto">
-          {sessions.length === 0 && <div className="text-sm text-black">No sessions found</div>}
+          {sessions.length === 0 && <div className="text-sm text-[#263238]">No sessions found</div>}
           {sessions.map((s) => (
-            <div key={s.id} className="flex items-center justify-between border border-white/6 p-3 rounded bg-white/6">
+            <div key={s.id} className="flex items-center justify-between border border-gray-200 p-3 rounded bg-white/80">
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-black truncate">
+                <div className="text-sm font-medium text-[#263238] truncate">
                   <span className="font-mono">{`Chat_${s.id}`}</span>
                 </div>
-                <div className="text-xs text-gray-600 truncate">{s.lastMessage ? (s.lastMessage.text || 'Message') : 'Empty session'}</div>
+                <div className="text-xs text-[#90A4AE] truncate">{s.lastMessage ? (s.lastMessage.text || 'Message') : 'Empty session'}</div>
               </div>
               <div className="flex items-center gap-2 ml-4">
                 <button className={`${btnGhost} px-2`} onClick={() => onOpen(s.id)}>Open</button>
-                <button className="text-xs text-red-400 px-2" onClick={() => onDelete(s.id)}>Delete</button>
+                <button className="text-xs text-red-500 px-2" onClick={() => onDelete(s.id)}>Delete</button>
               </div>
             </div>
           ))}

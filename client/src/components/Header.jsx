@@ -11,9 +11,16 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
     setMobileOpen(false);
   }, [location.pathname]);
 
+  // Tailwind tokens aligned with design system:
+  // accent: #FF8C42, primary text: #263238, muted: #90A4AE, card bg: bg-white/70, ring: ring-[#FF8C42]/30
   const baseLink = ({ isActive }) =>
-    `px-3 py-2 rounded ${isActive ? 'text-blue-700 font-semibold' : 'text-gray-700 hover:text-blue-600'} transition`;
-  const actionClass = 'px-3 py-2 rounded text-gray-700 hover:text-blue-600 transition';
+    `px-3 py-2 rounded-md text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 focus:ring-offset-2 focus:ring-offset-white ${
+      isActive
+        ? 'text-[#FF8C42] font-semibold'
+        : 'text-[#90A4AE] hover:text-[#263238]'
+    }`;
+  const actionClass =
+    'px-3 py-2 rounded-md text-sm font-medium text-[#263238] hover:text-[#FF8C42] transition focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 focus:ring-offset-2 focus:ring-offset-white';
 
   const adminNav = (
     <>
@@ -39,34 +46,55 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
   );
 
   return (
-    <header className="fixed inset-x-0 top-0 bg-white shadow z-50">
-      <div className="max-w-6xl mx-auto flex items-center justify-between h-16 px-4 sm:px-6">
-        <div className="flex items-center gap-3">
-          <button className="md:hidden p-2 rounded" onClick={() => setMobileOpen(o => !o)} aria-label="Toggle menu">
-            <svg className="w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mobileOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} /></svg>
-          </button>
-          <NavLink to="/" className="text-2xl font-extrabold text-blue-700">MindSphere</NavLink>
-        </div>
+    // floating semi-transparent centered card at top (matches design tokens)
+    <header className="fixed inset-x-0 top-4 z-50 pointer-events-auto">
+      <div className="max-w-7xl mx-auto rounded-xl shadow-xl bg-white/70 backdrop-blur-sm border border-gray-200">
+        <div className="flex items-center justify-between h-16 px-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <button
+              className="md:hidden p-2 rounded focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30"
+              onClick={() => setMobileOpen(o => !o)}
+              aria-label="Toggle menu"
+            >
+              <svg className="w-6 h-6 text-[#FF8C42]" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={mobileOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16M4 18h16'} />
+              </svg>
+            </button>
 
-        {/* Desktop links */}
-        <nav className="hidden md:flex items-center gap-4">
-          {user?.role === 'admin' ? adminNav : user?.role === 'counsellor' ? counsellorNav : defaultNav}
-        </nav>
+            <NavLink to="/" className="flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30">
+              <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-gray-100">
+                <img src="/mindsphere-logo.png" alt="MindSphere" className="w-7 h-7" />
+              </div>
+              <span className="text-xl md:text-2xl font-extrabold text-[#263238]">MindSphere</span>
+            </NavLink>
+          </div>
 
-        <div className="flex items-center gap-3">
-          <button onClick={() => onLogout && onLogout()} className="px-3 py-1 rounded bg-red-50 text-red-600 font-semibold hover:bg-red-100 text-sm">Logout</button>
-        </div>
-      </div>
-
-      {/* Mobile menu */}
-      {mobileOpen && (
-        <div className="md:hidden bg-white border-t shadow-sm">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-2">
+          {/* Desktop links */}
+          <nav className="hidden md:flex items-center gap-4">
             {user?.role === 'admin' ? adminNav : user?.role === 'counsellor' ? counsellorNav : defaultNav}
-            {/* mobile logout removed per request - desktop Logout remains */}
+          </nav>
+
+          <div className="flex items-center gap-3">
+            {/* Logout styled per design tokens — neutral card with subtle border */}
+            <button
+              onClick={() => onLogout && onLogout()}
+              className="px-3 py-1 rounded-md bg-white/70 text-[#263238] font-semibold hover:bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30"
+            >
+              Logout
+            </button>
           </div>
         </div>
-      )}
+
+        {/* Mobile menu */}
+        {mobileOpen && (
+          <div className="md:hidden border-t border-gray-200 bg-white/70">
+            <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-2 rounded-b-2xl">
+              {user?.role === 'admin' ? adminNav : user?.role === 'counsellor' ? counsellorNav : defaultNav}
+              {/* mobile logout intentionally omitted (desktop Logout remains) */}
+            </div>
+          </div>
+        )}
+      </div>
     </header>
   );
 }
