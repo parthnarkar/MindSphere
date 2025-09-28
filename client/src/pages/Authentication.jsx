@@ -95,8 +95,12 @@ const AuthPage = ({ defaultRole } = {}) => {
           console.warn('sessionStorage set failed', storageErr);
         }
       }
-  // Navigate to chatbot after successful sign-in
-  navigate('/chatbot');
+
+  // Navigate based on role (use the role returned from login if present, otherwise the selected role)
+  const navRole = acctRole || role;
+  if (navRole === 'admin') navigate('/admin-dashboard');
+  else if (navRole === 'counsellor') navigate('/CounsellorDashboard');
+  else navigate('/chatbot');
     } catch (err) {
       setError(err.message || "Login failed");
     }
@@ -181,8 +185,12 @@ const AuthPage = ({ defaultRole } = {}) => {
       if (result && result.firstLogin) {
         try { sessionStorage.setItem('firstLogin', '1'); } catch(e) { /* ignore */ }
       }
-  // Navigate to chatbot after successful Google sign-in
-  navigate('/chatbot');
+
+      // Navigate based on role returned by signInWithGoogle (usually 'user')
+      const gRole = result && result.role ? result.role : 'user';
+      if (gRole === 'admin') navigate('/admin-dashboard');
+      else if (gRole === 'counsellor') navigate('/CounsellorDashboard');
+      else navigate('/chatbot');
     } catch (err) {
       setError(err.message || "Google sign-in failed");
       

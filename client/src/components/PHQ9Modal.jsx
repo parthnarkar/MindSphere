@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef, useEffect } from "react";
 import { API } from "../hooks/helper";
+import { toast } from 'react-toastify';
 
 export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
   const questions = useMemo(() => [
@@ -59,7 +60,8 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
         return;
       }
 
-      // success
+      // success: show global toast and local toast
+      toast.success('PHQ-9 submitted successfully');
       setToast({ visible: true, message: "Submitted successfully", type: "success" });
       onSubmitted && onSubmitted();
       // auto-close modal shortly after showing toast
@@ -69,6 +71,7 @@ export default function PHQ9Modal({ user, open, onClose, onSubmitted }) {
       }, 1200);
     } catch (e) {
       const msg = e.message || "Submission failed";
+      toast.error(msg);
       setToast({ visible: true, message: msg, type: "error" });
     } finally {
       setSubmitting(false);

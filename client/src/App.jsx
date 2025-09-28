@@ -36,15 +36,15 @@ function App() {
       setInitialAuthChecked(true);
       // Show immediately after login for non-counsellor; will auto-close if recent submission exists
       if (currentUser) {
-        // Only show PHQ modal for signed-up users who are not counsellors. Show it
-        // only when the session 'firstLogin' flag is set (set at signup/login time).
-        if (currentUser.signedUp && currentUser.role !== "counsellor") {
+          // Only show PHQ modal for signed-up users who are regular 'user' accounts. Show it
+          // only when the session 'firstLogin' flag is set (set at signup/login time).
+          if (currentUser.signedUp && currentUser.role === "user") {
           // Do NOT set showPhq9 here (avoids visual flicker). Instead record if the
           // session indicates first-login; the checkPhq9 effect will decide
           // whether to show the modal after verifying the server state.
           const isFirstLogin =
             currentUser.signedUp &&
-            currentUser.role !== "counsellor" &&
+              currentUser.role === "user" &&
             !!sessionStorage.getItem("firstLogin");
           setFirstLoginCandidate(isFirstLogin);
           // reset phq9Checked so the check effect runs
@@ -72,7 +72,7 @@ function App() {
       if (
         !user ||
         phq9Checked ||
-        user.role === "counsellor" ||
+        user.role !== "user" ||
         !firstLoginCandidate
       )
         return;
@@ -149,8 +149,8 @@ function App() {
       onLogout={handleLogout}
       onShowPhq9={() => setShowPhq9(true)}
     >
-      {/* PHQ-9 Modal */}
-      {user && user.role !== "counsellor" && showPhq9 && (
+      {/* PHQ-9 Modal (only for regular users) */}
+      {user && user.role === "user" && showPhq9 && (
         <PHQ9Modal
           user={user}
           open={showPhq9}
