@@ -520,3 +520,91 @@
   opacity: 0;
   transition: opacity 300ms;
 }
+
+/* Custom Toast Styling for MindSphere */
+.custom-toast {
+  border-radius: 12px !important;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  font-family: "Inter", system-ui, -apple-system, sans-serif !important;
+  min-height: 80px !important;
+  padding: 16px !important;
+}
+
+.custom-success-toast {
+  background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
+  color: white !important;
+  border-left: 4px solid #1e8449 !important;
+}
+
+.custom-error-toast {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%) !important;
+  color: white !important;
+  border-left: 4px solid #a93226 !important;
+}
+
+.custom-toast-body {
+  padding: 0 !important;
+  margin: 0 !important;
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+.custom-toast-progress {
+  background: rgba(255, 255, 255, 0.3) !important;
+  height: 3px !important;
+}
+
+/* Toast close button styling */
+.Toastify__close-button {
+  color: rgba(255, 255, 255, 0.8) !important;
+  opacity: 0.8 !important;
+  font-size: 18px !important;
+  font-weight: bold !important;
+}
+
+.Toastify__close-button:hover {
+  color: white !important;
+  opacity: 1 !important;
+}
+
+/* Toast icon styling */
+.Toastify__toast-icon {
+  margin-right: 12px !important;
+  font-size: 20px !important;
+}
+
+/* Animation improvements */
+.Toastify__toast--enter {
+  transform: translateX(100%) !important;
+}
+
+.Toastify__toast--enter-active {
+  transform: translateX(0) !important;
+  transition: transform 0.3s ease-out !important;
+}
+
+.Toastify__toast--exit {
+  transform: translateX(0) !important;
+}
+
+.Toastify__toast--exit-active {
+  transform: translateX(100%) !important;
+  transition: transform 0.3s ease-in !important;
+}
+
+/* Mobile responsive toast */
+@media (max-width: 768px) {
+  .custom-toast {
+    margin: 8px !important;
+    border-radius: 8px !important;
+    min-height: 70px !important;
+    padding: 12px !important;
+  }
+  
+  .custom-toast-body {
+    font-size: 13px !important;
+  }
+}

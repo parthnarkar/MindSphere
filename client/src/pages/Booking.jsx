@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { db, auth } from "../firebase";
 import logo from "../assets/mindsphere-logo.png";
 import { collection, getDocs, addDoc, serverTimestamp, query, where } from "firebase/firestore";
+import { toast } from "react-toastify";
 
 export default function Booking() {
   const [counsellors, setCounsellors] = useState([]);
@@ -61,7 +62,14 @@ export default function Booking() {
   // Confirm booking
   const confirmBooking = async () => {
     if (!time || (!anonymous && !name) || !contact || !email) {
-      alert("Please fill all required fields!");
+      toast.error("Please fill all required fields!", {
+        position: "top-right",
+        autoClose: 3000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
       return;
     }
 
@@ -77,10 +85,53 @@ export default function Booking() {
         status: "booked",
         createdAt: serverTimestamp(),
       });
+      
+      // Show success toast
+      toast.success(
+        <div className="flex flex-col">
+          <div className="font-semibold text-lg">🎉 Booking Confirmed!</div>
+          <div className="text-sm mt-1">
+            Your appointment with <span className="font-medium">{selectedCounsellor.name}</span> has been booked successfully.
+          </div>
+          <div className="text-xs mt-2 text-gray-600">
+            📅 {new Date(time).toLocaleDateString()} at {new Date(time).toLocaleTimeString()}
+          </div>
+        </div>,
+        {
+          position: "top-right",
+          autoClose: 6000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          className: "custom-success-toast",
+        }
+      );
+      
       setBookingStatus("success");
-      setTimeout(() => setShowPopup(false), 1500);
+      setTimeout(() => setShowPopup(false), 2000);
     } catch (error) {
       console.error("Booking failed:", error);
+      
+      // Show error toast
+      toast.error(
+        <div className="flex flex-col">
+          <div className="font-semibold text-lg">❌ Booking Failed</div>
+          <div className="text-sm mt-1">
+            Something went wrong while booking your appointment. Please try again.
+          </div>
+        </div>,
+        {
+          position: "top-right",
+          autoClose: 5000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+          className: "custom-error-toast",
+        }
+      );
+      
       setBookingStatus("error");
     }
   };
@@ -188,10 +239,6 @@ export default function Booking() {
                 />
               </label>
 
-              <div className="sm:col-span-2">
-                {bookingStatus === "success" && <p className="text-green-600 font-medium">Booking confirmed! ✅</p>}
-                {bookingStatus === "error" && <p className="text-red-600 font-medium">Booking failed. Try again ❌</p>}
-              </div>
 
             </form>
 

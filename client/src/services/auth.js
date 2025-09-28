@@ -1,11 +1,12 @@
-import { auth, db } from "../firebase.js";
+import { auth, db, googleProvider } from "../firebase.js";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
+  signInWithPopup
 } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, collection, query, where, getDocs } from "firebase/firestore";
 
 // Login user and get role
 export const loginUser = async (email, password) => {
@@ -64,6 +65,58 @@ export const registerUser = async (email, password, role = "user", extra = {}) =
 //   }
 // };
 
+// Google Sign In - Only for existing users with user role
+export const signInWithGoogle = async (role = "user") => {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    const user = result.user;
+    
+    // First, check if this email exists in the system with "user" role
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', user.email));
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+      // Email not found in system - sign out and show error
+      await signOut(auth);
+      throw new Error("This email is not registered in our system. Please sign up first using email and password.");
+    }
+    
+    // Check if the existing user has "user" role
+    const existingUserDoc = querySnapshot.docs[0];
+    const existingUserData = existingUserDoc.data();
+    
+    console.log("Google Sign-in Debug:", {
+      email: user.email,
+      existingRole: existingUserData.role,
+      existingDocId: existingUserDoc.id,
+      googleUid: user.uid
+    });
+    
+    if (existingUserData.role !== "user") {
+      // Email exists but not as user role - sign out and show error
+      await signOut(auth);
+      throw new Error(`This email is registered as '${existingUserData.role}'. Google sign-in is only available for users. Please use email and password to sign in.`);
+    }
+    
+    // Email exists and is a user - create a new document with Google UID
+    // but preserve the original user data and role
+    await setDoc(doc(db, "users", user.uid), {
+      email: user.email,
+      name: user.displayName || existingUserData.name,
+      role: "user", // Force user role
+      provider: 'google',
+      createdAt: existingUserData.createdAt || new Date(),
+      lastLogin: new Date(),
+      originalUid: existingUserDoc.id // Keep reference to original account
+    });
+    
+    return { user, role: "user", signedUp: true, firstLogin: false };
+  } catch (error) {
+    throw error;
+  }
+};
+
 // Logout user
 export const logoutUser = () => {
   return signOut(auth);
@@ -87,8 +140,24 @@ export const onAuthChange = (callback) => {
           counsellorProfile = false;
         }
       }
-      // Add role and signedUp to user object
-      const userWithRole = { ...currentUser, role, signedUp, counsellorProfile };
+      // Add role, signedUp, and provider to user object
+      const userData = userDoc.data() || {};
+      const userWithRole = { 
+        ...currentUser, 
+        role, 
+        signedUp, 
+        counsellorProfile,
+        provider: userData.provider || 'email'
+      };
+      
+      console.log("Auth State Change Debug:", {
+        uid: currentUser.uid,
+        email: currentUser.email,
+        role: role,
+        provider: userData.provider || 'email',
+        signedUp: signedUp
+      });
+      
       callback(userWithRole);
     } else {
       callback(null);

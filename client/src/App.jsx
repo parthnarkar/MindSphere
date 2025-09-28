@@ -14,7 +14,9 @@ import { API } from "./hooks/helper";
 import Header from "./components/Header";
 import Layout from "./components/Layout";
 import CounsellorsGrid from "./components/CounsellorsGrid";
-import { PrivateRoute, CounsellorRoute, AdminRoute } from "./components/ProtectedRoutes";
+import { PrivateRoute, CounsellorRoute } from "./components/ProtectedRoutes";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 function App() {
   const [user, setUser] = useState(null);
@@ -254,6 +256,23 @@ function App() {
         />
       </Routes>
       <CounsellorsGrid counsellors={counsellors} />
+      
+      {/* Toast Container */}
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+        toastClassName="custom-toast"
+        bodyClassName="custom-toast-body"
+        progressClassName="custom-toast-progress"
+      />
     </Layout>
   );
 }
