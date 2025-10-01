@@ -18,9 +18,17 @@ import json
 import os
 import re
 import requests
-from google.generativeai import client as genai
+
+# reuse model response extraction utilities
+from .model import _extract_text, _coerce_to_string
+from . import model as modelutils
 # --- Configuration ---
 from difflib import SequenceMatcher
+try:
+    import google.generativeai as genai
+except Exception:
+    genai = None
+
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('MODEL_NAME')
@@ -50,20 +58,77 @@ UNIFIED_INTENT_PROMPT = (
 
 def _call_gemini(prompt: str, timeout: float = 6.0) -> str:
     """Call Gemini (Generative Language API) with the unified prompt and return the raw response text."""
-    if not GEMINI_API_KEY or not GEMINI_MODEL:
-        raise ValueError('GEMINI_API_KEY or MODEL_NAME not configured')
+    # Prefer the initialized model client from modelutils if present; fall back to local genai import
+    client = getattr(modelutils, 'client', None) or genai
+    model_name = getattr(modelutils, 'model_name', None) or GEMINI_MODEL
 
-    try:
-        genai.configure(api_key=GEMINI_API_KEY)
-        response = genai.generate_text(
-            model=GEMINI_MODEL,
-            prompt=prompt,
-            max_output_tokens=500,
-            temperature=0.0,
-        )
-        return response.text
-    except Exception as e:
-        raise RuntimeError(f"Gemini API call failed: {e}")
+    if client is None or not model_name:
+        raise ValueError('Gemini client or model not configured')
+
+    # Try multiple call surfaces and allow one retry when response is empty
+    last_err = None
+    attempts = 2
+    for attempt in range(attempts):
+        try:
+            # If the client offers a configure hook and an API key is present, ensure configured
+            try:
+                if GEMINI_API_KEY and hasattr(client, 'configure'):
+                    client.configure(api_key=GEMINI_API_KEY)
+            except Exception:
+                pass
+
+            # Modern API: generate(model=..., input=...)
+            if hasattr(client, 'generate'):
+                resp = client.generate(model=model_name, input=prompt, max_output_tokens=500, temperature=0.0)
+                text = _extract_text(resp)
+                text = _coerce_to_string(text)
+                if text and isinstance(text, str) and text.strip():
+                    return text
+
+            # Alternate: generate_text
+            if hasattr(client, 'generate_text'):
+                try:
+                    resp = client.generate_text(model=model_name, prompt=prompt, max_output_tokens=500, temperature=0.0)
+                except TypeError:
+                    resp = client.generate_text(model=model_name, text=prompt, max_output_tokens=500, temperature=0.0)
+                text = _extract_text(resp)
+                text = _coerce_to_string(text)
+                if text and isinstance(text, str) and text.strip():
+                    return text
+
+            # Older wrapper object: GenerativeModel
+            if hasattr(client, 'GenerativeModel'):
+                try:
+                    gm = client.GenerativeModel(model_name)
+                    if hasattr(gm, 'generate_content'):
+                        out = gm.generate_content(prompt)
+                        text = _extract_text(out)
+                        text = _coerce_to_string(text)
+                        if text and isinstance(text, str) and text.strip():
+                            return text
+                    if hasattr(gm, 'generate'):
+                        out = gm.generate(prompt)
+                        text = _extract_text(out)
+                        text = _coerce_to_string(text)
+                        if text and isinstance(text, str) and text.strip():
+                            return text
+                except Exception:
+                    pass
+
+            # If we reached here without a non-empty text, raise to trigger retry/outer error handling
+            raise RuntimeError('Model returned empty or unsupported response')
+        except Exception as e:
+            last_err = e
+            # small backoff between attempts
+            if attempt + 1 < attempts:
+                try:
+                    import time
+                    time.sleep(0.3)
+                except Exception:
+                    pass
+            continue
+    # If we exit loop, raise last error
+    raise RuntimeError(f"Gemini API call failed: {last_err}")
 
 
 def _parse_json_strict(text: str) -> dict:
@@ -71,17 +136,155 @@ def _parse_json_strict(text: str) -> dict:
 
     Raises ValueError if no JSON object can be parsed.
     """
+    if not text or not isinstance(text, str):
+        raise ValueError('no text to parse')
+
+    def _extract_json_from_position(s: str, start_idx: int) -> str:
+        """Try to extract a JSON object starting at start_idx using brace matching.
+        Returns the substring if a balanced object is found, otherwise empty string."""
+        depth = 0
+        in_str = False
+        esc = False
+        quote_char = None
+        for i in range(start_idx, len(s)):
+            ch = s[i]
+            if in_str:
+                if esc:
+                    esc = False
+                    continue
+                if ch == '\\':
+                    esc = True
+                    continue
+                if ch == quote_char:
+                    in_str = False
+                    quote_char = None
+                    continue
+                continue
+            else:
+                if ch == '"' or ch == "'":
+                    in_str = True
+                    quote_char = ch
+                    esc = False
+                    continue
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return s[start_idx:i+1]
+        return ''
+
+    # Attempt to extract JSON from common wrapper patterns first:
+    # 1) Triple-backtick fenced blocks (```json ... ```)
+    # 2) Quoted text fields (e.g., parts { text: "..." }) where the JSON may be inside the quoted string
+    try:
+        # Try to unescape common escape sequences so that embedded JSON inside quoted strings
+        # becomes parseable (e.g. "\n" -> newline, escaped quotes -> real quotes).
+        try:
+            unescaped = bytes(text, 'utf-8').decode('unicode_escape')
+        except Exception:
+            unescaped = text
+
+        # 1) fenced code block search (```json ... ``` or ``` ... ```)
+        import re
+        fenced = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', unescaped, re.DOTALL | re.IGNORECASE)
+        if fenced:
+            candidate = fenced.group(1)
+            try:
+                return json.loads(candidate)
+            except Exception:
+                # try to clean the candidate by unescaping again
+                try:
+                    cand2 = bytes(candidate, 'utf-8').decode('unicode_escape')
+                    return json.loads(cand2)
+                except Exception:
+                    pass
+
+        # 2) Extract quoted text fields and attempt to parse JSON inside them
+        # Find all quoted strings; these may contain the JSON when the SDK wrapped it
+        quoted = re.findall(r'"((?:\\.|[^"\\])*)"', text, re.DOTALL)
+        for q in quoted:
+            try:
+                q_un = bytes(q, 'utf-8').decode('unicode_escape')
+            except Exception:
+                q_un = q
+            # if there's a brace in the unescaped quoted string, try to extract JSON inside it
+            if '{' in q_un:
+                # try brace-matching on the quoted string
+                def _extract_from_str(s):
+                    depth = 0
+                    in_str = False
+                    esc = False
+                    quote_char = None
+                    start_idx = None
+                    for i, ch in enumerate(s):
+                        if in_str:
+                            if esc:
+                                esc = False
+                                continue
+                            if ch == '\\':
+                                esc = True
+                                continue
+                            if ch == quote_char:
+                                in_str = False
+                                quote_char = None
+                                continue
+                            continue
+                        else:
+                            if ch == '"' or ch == "'":
+                                in_str = True
+                                quote_char = ch
+                                esc = False
+                                continue
+                            if ch == '{':
+                                if start_idx is None:
+                                    start_idx = i
+                                depth += 1
+                            elif ch == '}':
+                                depth -= 1
+                                if depth == 0 and start_idx is not None:
+                                    return s[start_idx:i+1]
+                    return ''
+
+                candidate = _extract_from_str(q_un)
+                if candidate:
+                    try:
+                        return json.loads(candidate)
+                    except Exception:
+                        try:
+                            return json.loads(bytes(candidate, 'utf-8').decode('unicode_escape'))
+                        except Exception:
+                            pass
+    except Exception:
+        # non-fatal; fall through to general scanning
+        pass
+
+    # Scan for every '{' occurrence and try to parse a JSON object starting there.
+    idx = 0
+    while True:
+        idx = text.find('{', idx)
+        if idx == -1:
+            break
+        candidate = _extract_json_from_position(text, idx)
+        if candidate:
+            try:
+                return json.loads(candidate)
+            except Exception:
+                # try next occurrence
+                idx = idx + 1
+                continue
+
+    # Fallback: progressive slicing (legacy behavior)
     start = text.find('{')
     if start == -1:
         raise ValueError('no JSON found')
-    # try progressively shorter tail slices until json.loads succeeds
     for end in range(len(text), start, -1):
         try:
             snippet = text[start:end]
             return json.loads(snippet)
         except Exception:
             continue
-    # final attempt
+    # final attempt on whole text
     return json.loads(text)
 
 
@@ -173,12 +376,24 @@ def detect_intent(message: str) -> dict:
         return out
 
     # Per your request, perform intent analysis purely via the LLM.
-    if not GEMINI_API_KEY:
-        return {'intent': 'unknown', 'confidence': 0.0, 'danger_level': 'low', 'metadata': {'error': 'GEMINI_API_KEY not configured'}}
+    # Ensure we have a live model client at call time. Prefer an already-initialized
+    # client (useful for tests which inject modelutils.client). If nothing is set,
+    # attempt to initialize using modelutils.init_model(). If still unavailable,
+    # return 'unknown' with metadata (no local heuristics used).
+    if not getattr(modelutils, 'client', None) or not getattr(modelutils, 'model_name', None):
+        try:
+            modelutils.init_model()
+        except Exception:
+            pass
+    if not getattr(modelutils, 'client', None) or not getattr(modelutils, 'model_name', None):
+        return {'intent': 'unknown', 'confidence': 0.0, 'danger_level': 'low', 'metadata': {'error': 'Gemini client not configured'}}
 
     prompt = UNIFIED_INTENT_PROMPT + " " + message
     try:
         raw = _call_gemini(prompt)
+        # Defensive: if the model returns an empty string or whitespace, avoid json parsing
+        if not raw or not isinstance(raw, str) or not raw.strip():
+            raise ValueError('empty response from model')
         parsed = _parse_json_strict(raw)
         intent = parsed.get('intent', 'other')
         confidence = float(parsed.get('confidence') or 0.0)
@@ -190,6 +405,16 @@ def detect_intent(message: str) -> dict:
             'danger_level': danger if isinstance(danger, str) else str(danger),
             'metadata': metadata
         }
+        # Determine a simple safety flag for downstream callers. Mark as unsafe
+        # when the model indicates moderate/high danger or explicitly labels the intent as 'crisis'.
+        try:
+            dl = (result.get('danger_level') or 'low').lower()
+            it = (result.get('intent') or '').lower()
+            result['unsafe'] = dl in ('moderate', 'high') or it == 'crisis'
+            result['safe'] = not result['unsafe']
+        except Exception:
+            result['unsafe'] = False
+            result['safe'] = True
         # If model marks high danger, mark the result for external escalation.
         # SMTP-based notifications were removed from this module.
         if result['danger_level'].lower() == 'high':
@@ -199,11 +424,60 @@ def detect_intent(message: str) -> dict:
             result['metadata'] = md
         return result
     except Exception as e:
+        # Do NOT print errors; instead collect metadata and attempt one recovery pass
+        meta = {'error_first': str(e)}
         try:
-            print('Intent detection model error:', e)
+            if 'raw' in locals() and isinstance(raw, str) and raw.strip():
+                meta['model_raw_snippet'] = raw.strip()[:2000]
         except Exception:
             pass
-        return {'intent': 'unknown', 'confidence': 0.0, 'danger_level': 'low', 'metadata': {'error': str(e)}}
+
+        # Recovery: ask the model again with an explicit 'ONLY JSON' instruction
+        try:
+            recovery_prompt = (
+                UNIFIED_INTENT_PROMPT + " " + message + "\n\n"
+                "IMPORTANT: If your previous output was not valid JSON, respond now with ONLY a valid JSON object exactly matching the schema and nothing else."
+            )
+            raw2 = _call_gemini(recovery_prompt)
+            if raw2 and isinstance(raw2, str) and raw2.strip():
+                try:
+                    parsed = _parse_json_strict(raw2)
+                    intent = parsed.get('intent', 'other')
+                    confidence = float(parsed.get('confidence') or 0.0)
+                    danger = parsed.get('danger_level') or parsed.get('danger') or 'low'
+                    metadata = parsed.get('metadata') or {}
+                    result = {
+                        'intent': intent if isinstance(intent, str) else str(intent),
+                        'confidence': max(0.0, min(1.0, confidence)),
+                        'danger_level': danger if isinstance(danger, str) else str(danger),
+                        'metadata': metadata
+                    }
+                    try:
+                        dl = (result.get('danger_level') or 'low').lower()
+                        it = (result.get('intent') or '').lower()
+                        result['unsafe'] = dl in ('moderate', 'high') or it == 'crisis'
+                        result['safe'] = not result['unsafe']
+                    except Exception:
+                        result['unsafe'] = False
+                        result['safe'] = True
+                    if result['danger_level'].lower() == 'high':
+                        md = result.get('metadata') or {}
+                        md['escalation_required'] = True
+                        md['escalation_note'] = 'High danger detected; escalate externally (SMTP removed)'
+                        result['metadata'] = md
+                    # annotate that recovery succeeded
+                    result['metadata'] = result.get('metadata') or {}
+                    result['metadata']['recovery'] = 'second_pass_success'
+                    return result
+                except Exception as e2:
+                    meta['error_second_parse'] = str(e2)
+                    if isinstance(raw2, str) and raw2.strip():
+                        meta['model_raw_snippet_second'] = raw2.strip()[:2000]
+        except Exception as e2:
+            meta['error_second_call'] = str(e2)
+
+        # Final fallback: return unknown with metadata
+        return {'intent': 'unknown', 'confidence': 0.0, 'danger_level': 'low', 'metadata': meta}
 
 
 def generate_structured_report(user_meta: dict, phq_entries: list, chat_msgs: list, posts: list, resources: list) -> str:

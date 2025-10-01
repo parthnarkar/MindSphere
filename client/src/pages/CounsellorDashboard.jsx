@@ -3,6 +3,7 @@ import userIcon from '/councellor.png';
 import { db, auth } from "../firebase";
 import { collection, query, where, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
 import CounsellorProfileForm from "../components/CounsellorProfileForm";
+import LogoLoader from "../components/LogoLoader";
 import { API } from "../hooks/helper";
 
 const CounsellorDashboard = () => {
@@ -226,13 +227,12 @@ const CounsellorDashboard = () => {
   if (profileLoadingState) {
     return (
       <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your profile...</p>
-        </div>
+        <LogoLoader active={true} minDuration={2000} size={96} text={"Loading your profile..."} />
       </div>
     );
   }
+  // notify the app that this page has finished its initial render
+  try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
 
   return (
     <div className="min-h-screen bg-gray-50">

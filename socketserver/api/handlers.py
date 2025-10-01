@@ -23,6 +23,42 @@ MONGO_URI = db_state.get('MONGO_URI')
 _in_memory_posts = get_in_memory_posts()
 
 
+def _emit_full_post(postId):
+    """Fetch the canonical post from Mongo or in-memory, normalize replies into nested children,
+    and emit 'post_updated' to all clients (including the emitter). Returns True on success."""
+    try:
+        if MONGO_URI:
+            oid = safe_objectid(postId)
+            if oid:
+                doc = posts_col.find_one({'_id': oid})
+                if doc:
+                    doc['id'] = str(doc.get('_id'))
+                    doc.pop('_id', None)
+                    doc.setdefault('replies', [])
+                    for r in doc['replies']:
+                        r.setdefault('children', [])
+                    # build nested children mapping for embedded replies
+                    by_id = {str(r.get('id')): r for r in doc.get('replies', [])}
+                    roots = []
+                    for r in list(doc.get('replies', [])):
+                        parent = r.get('parentId')
+                        if parent and str(parent) in by_id:
+                            by_id[str(parent)].setdefault('children', []).append(r)
+                        else:
+                            roots.append(r)
+                    doc['replies'] = roots
+                    emit('post_updated', doc, broadcast=True)
+                    return True
+        else:
+            for p in _in_memory_posts:
+                if str(p.get('id')) == str(postId):
+                    emit('post_updated', p, broadcast=True)
+                    return True
+    except Exception as e:
+        print('Warning: failed to emit full post_updated', e)
+    return False
+
+
 @app.route('/api/posts', methods=['GET'])
 def get_posts():
     category = request.args.get('category')
@@ -105,17 +141,15 @@ def handle_disconnect():
 def handle_create_post(post):
     print('New post created:', post.get('title'))
     try:
-        # Validate required author email for persistence
-        author = post.get('author') or {}
-        if MONGO_URI and (not author.get('email')):
-            print('Rejecting post persist: missing author.email')
-            # still broadcast post optimistically but do not persist
-            emit('post_created', post, broadcast=True, include_self=False)
-            return
+        # Persist post to Mongo if available (no longer require author.email)
         if MONGO_URI:
-            post_doc = {k: v for k, v in post.items() if k != 'id'}
+            # preserve clientTempId if provided so clients can reconcile optimistic posts
+            client_temp = post.get('clientTempId')
+            post_doc = {k: v for k, v in post.items() if k not in ('id', 'clientTempId')}
             res = posts_col.insert_one({**post_doc, 'createdAt': time.strftime('%Y-%m-%dT%H:%M:%S'), 'replies': []})
             post['id'] = str(res.inserted_id)
+            if client_temp:
+                post['clientTempId'] = client_temp
         # broadcast canonical post to all clients (including emitter)
         emit('post_created', post, broadcast=True)
     except Exception as e:
@@ -130,13 +164,7 @@ def handle_add_reply(data):
     print('New reply added to post:', postId)
     try:
         parentId = reply.get('parentId') if isinstance(reply, dict) else None
-        # Persist reply embedded inside the post document
-        author = reply.get('author') or {}
-        if MONGO_URI and (not author.get('email')):
-            print('Rejecting reply persist: missing author.email')
-            # still broadcast the reply but do not persist
-            emit('reply_added', {'postId': postId, 'reply': reply}, broadcast=True)
-            return
+        # Persist reply embedded inside the post document (no longer require author.email)
         try:
             # prepare reply object
             reply_obj = {k: v for k, v in reply.items() if k != 'id'}
@@ -210,6 +238,40 @@ def handle_add_reply(data):
     except Exception as e:
         print('Warning: failed to persist reply:', e)
     # broadcast canonical reply object to all clients (including emitter)
+    # Also emit the full updated post so clients can replace entire thread state
+    try:
+        if MONGO_URI:
+            oid = safe_objectid(postId)
+            if oid:
+                doc = posts_col.find_one({'_id': oid})
+                if doc:
+                    # normalize and emit full updated post
+                    doc['id'] = str(doc.get('_id'))
+                    doc.pop('_id', None)
+                    doc.setdefault('replies', [])
+                    for r in doc['replies']:
+                        r.setdefault('children', [])
+                    # build nested children
+                    by_id = {str(r.get('id')): r for r in doc.get('replies', [])}
+                    roots = []
+                    for r in list(doc.get('replies', [])):
+                        parent = r.get('parentId')
+                        if parent and str(parent) in by_id:
+                            by_id[str(parent)].setdefault('children', []).append(r)
+                        else:
+                            roots.append(r)
+                    doc['replies'] = roots
+                    emit('post_updated', doc, broadcast=True)
+                    return
+        else:
+            # emit in-memory post
+            for p in _in_memory_posts:
+                if str(p.get('id')) == str(postId):
+                    emit('post_updated', p, broadcast=True)
+                    return
+    except Exception as e:
+        print('Warning: failed to emit full post_updated', e)
+    # fallback: emit minimal reply event
     emit('reply_added', {'postId': postId, 'reply': reply}, broadcast=True)
 
 
@@ -247,7 +309,9 @@ def handle_upvote_post(data):
         print('Warning: upvote persistence failed', e)
         upvotes = int(time.time()) % 20
     safe_upvotes = locals().get('upvotes', 0)
-    emit('vote_updated', {'postId': postId, 'upvotes': safe_upvotes}, broadcast=True)
+    # Emit full post to keep clients fully synced
+    if not _emit_full_post(postId):
+        emit('vote_updated', {'postId': postId, 'upvotes': safe_upvotes}, broadcast=True)
 
 
 def handle_upvote_reply(data):
@@ -303,6 +367,8 @@ def handle_upvote_reply(data):
         print('Warning: upvote_reply failed', e)
         upvotes = int(time.time()) % 15
     emit('vote_updated', {'postId': postId, 'replyId': replyId, 'upvotes': upvotes}, broadcast=True)
+    # Try to broadcast full post after reply upvote
+    _emit_full_post(postId)
 
 
 @socketio.on('get_initial_posts')
@@ -356,7 +422,9 @@ def handle_pin_post(data):
     except Exception as e:
         print('Warning: pin persistence failed', e)
         isPinned = bool(int(time.time()) % 2)
-    emit('post_pinned', {'postId': postId, 'isPinned': isPinned}, broadcast=True, include_self=False)
+    # Emit full post so clients receive authoritative state (include_self=False to avoid duplicating optimistic toggles)
+    if not _emit_full_post(postId):
+        emit('post_pinned', {'postId': postId, 'isPinned': isPinned}, broadcast=True, include_self=False)
 
 
 @socketio.on('verify_reply')
@@ -408,7 +476,9 @@ def handle_verify_reply(data):
                     break
     except Exception as e:
         print('Warning: verify persistence failed', e)
-    emit('reply_verified', {'postId': postId, 'replyId': replyId, 'isVerified': True}, broadcast=True, include_self=False)
+    # Emit full post so clients receive authoritative state
+    if not _emit_full_post(postId):
+        emit('reply_verified', {'postId': postId, 'replyId': replyId, 'isVerified': True}, broadcast=True, include_self=False)
 
 
 @socketio.on('typing_start')

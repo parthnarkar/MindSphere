@@ -177,14 +177,20 @@ export const onAuthChange = (callback) => {
       }
       // Add role, signedUp, and provider to user object
       const userData = userDoc.data() || {};
-      const userWithRole = { 
-        ...currentUser, 
-        role, 
-        signedUp, 
+      const userWithRole = {
+        ...currentUser,
+        role,
+        signedUp,
         counsellorProfile,
         provider: userData.provider || 'email'
       };
-      
+
+      // Update sessionStorage so UI can stop using the optimistic value
+      try {
+        if (role) sessionStorage.setItem('authRole', role);
+        else sessionStorage.removeItem('authRole');
+      } catch (e) { /* ignore */ }
+
       console.log("Auth State Change Debug:", {
         uid: currentUser.uid,
         email: currentUser.email,
@@ -192,9 +198,10 @@ export const onAuthChange = (callback) => {
         provider: userData.provider || 'email',
         signedUp: signedUp
       });
-      
+
       callback(userWithRole);
     } else {
+      try { sessionStorage.removeItem('authRole'); } catch(e) { /* ignore */ }
       callback(null);
     }
   });

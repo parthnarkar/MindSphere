@@ -59,6 +59,7 @@ export default function AdminDashboard() {
         setAdminProfile(adminData);
 
         setLoading(false);
+        try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
       } catch (error) {
         console.error('Error fetching admin data:', error);
         setLoading(false);

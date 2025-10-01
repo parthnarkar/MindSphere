@@ -18,7 +18,8 @@ export default function Booking() {
   const [myBookings, setMyBookings] = useState([]);
   const [counsellorDetails, setCounsellorDetails] = useState(null);
   const [showDetailsPopup, setShowDetailsPopup] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
+  // no loading state: booking page must render immediately
   const [problemDescription, setProblemDescription] = useState("");
   // Validation functions
   const validateEmail = (email) => {
@@ -35,7 +36,6 @@ export default function Booking() {
   useEffect(() => {
     const fetchCounsellors = async () => {
       try {
-        setLoading(true);
         const querySnapshot = await getDocs(collection(db, "counsellors"));
         setCounsellors(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       } catch (error) {
@@ -45,7 +45,7 @@ export default function Booking() {
           autoClose: 5000,
         });
       } finally {
-        setLoading(false);
+          try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
       }
     };
     fetchCounsellors();
@@ -189,8 +189,8 @@ export default function Booking() {
   const confirmBooking = async () => {
     if (!validateForm()) return;
 
+    setBookingLoading(true);
     try {
-      setLoading(true);
       await addDoc(collection(db, "appointments"), {
         userId: auth.currentUser.uid,
         userName: anonymous ? "Anonymous" : name.trim(),
@@ -256,8 +256,9 @@ export default function Booking() {
       );
 
       setBookingStatus("error");
-    } finally {
-      setLoading(false);
+    }
+    finally {
+      try { setBookingLoading(false); } catch(e){}
     }
   };
 
@@ -275,20 +276,11 @@ export default function Booking() {
     setCounsellorDetails(null);
   };
 
-  if (loading && counsellors.length === 0) {
-    return (
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading counsellors...</p>
-        </div>
-      </div>
-    );
-  }
+  // Render immediately; counsellor list will populate when data arrives.
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 booking-root" style={{ backgroundColor: '#ffffffff', color: '#263238' }}>
-      <style jsx global>{`
+  <style>{`
         html {
           scroll-behavior: smooth;
         }
@@ -403,7 +395,7 @@ export default function Booking() {
             <button
               className="mt-4 px-4 py-2 font-medium rounded-full transition disabled:opacity-50 hover:opacity-75 cursor-pointer shadow-sm hover:shadow-md"
               onClick={() => handleBookClick(c)}
-              disabled={loading}
+              disabled={false}
               aria-label={`Book appointment with ${c.name}`}
               style={{ backgroundColor: '#FF8C42', color: '#faf3efff', border: '1px solid rgba(38,50,56,0.12)' }}
             >
@@ -425,7 +417,7 @@ export default function Booking() {
       {showDetailsPopup && counsellorDetails && (
         <div className="fixed inset-0 bg-opacity-70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
           <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 sm:p-8 animate-fadeIn overflow-y-auto max-h-[100vh] border-t-8 border-blue-600 relative scrollbar-hide smooth-scroll-enhanced momentum-scroll">
-            <style jsx>{`
+            <style>{`
               .scrollbar-hide::-webkit-scrollbar {
                 display: none;
               }
@@ -555,7 +547,7 @@ export default function Booking() {
             {/* Action Buttons */}
             <div className="flex gap-3 mt-8">
               <button
-                className="flex-1 px-4 py-3 rounded-xl hover:transition font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] cursor-pointer"
+                className="flex-1 px-4 py-3 rounded-xl transition font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] cursor-pointer"
                 onClick={() => {
                   handleCloseDetailsPopup();
                   handleBookClick(counsellorDetails);
@@ -565,7 +557,7 @@ export default function Booking() {
                 Book Now
               </button>
               <button
-                className="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium hover:transition font-medium shadow-sm hover:shadow-lg cursor-pointer"
+                className="px-4 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium shadow-sm hover:shadow-lg cursor-pointer"
                 onClick={handleCloseDetailsPopup}
               >
                 Close
@@ -629,7 +621,7 @@ export default function Booking() {
                 </span>
                 <input
                   type="text"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:bg-gray-100 w-full"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent disabled:bg-gray-100"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   disabled={anonymous}
@@ -644,7 +636,7 @@ export default function Booking() {
                 </span>
                 <input
                   type="tel"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent w-full"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                   value={contact}
                   onChange={(e) => setContact(e.target.value)}
                   placeholder="Enter your contact number"
@@ -659,7 +651,7 @@ export default function Booking() {
                 </span>
                 <input
                   type="email"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent w-full"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
@@ -679,7 +671,7 @@ export default function Booking() {
                 </span>
                 <input
                   type="datetime-local"
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent w-full"
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 mt-1 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent"
                   value={time}
                   onChange={(e) => setTime(e.target.value)}
                   min={new Date().toISOString().slice(0, 16)}
@@ -691,19 +683,18 @@ export default function Booking() {
 
             <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
               <button
-                className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition w-full sm:w-auto hover:transition font-medium shadow-sm hover:shadow-lg cursor-pointer"
+                className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200 transition w-full sm:w-auto font-medium shadow-sm hover:shadow-lg cursor-pointer"
                 onClick={handleClosePopup}
-                disabled={loading}
+                disabled={bookingLoading}
               >
                 Cancel
               </button>
               <button
-                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium w-full sm:w-auto
-                hover:transition font-medium shadow-sm hover:shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium w-full sm:w-auto shadow-sm hover:shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={confirmBooking}
-                disabled={loading}
+                disabled={bookingLoading}
               >
-                {loading ? 'Booking...' : 'Confirm'}
+                {bookingLoading ? 'Booking...' : 'Confirm'}
               </button>
             </div>
           </div>

@@ -6,20 +6,38 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  // Read optimistic role from sessionStorage synchronously so header doesn't flicker
+  let fallbackRole = null;
+  try {
+    const r = typeof window !== 'undefined' ? sessionStorage.getItem('authRole') : null;
+    if (r) fallbackRole = r;
+  } catch (err) { /* ignore */ }
 
   useEffect(() => {
     // close mobile menu on route change
     setMobileOpen(false);
   }, [location.pathname]);
 
-  const baseLink = ({ isActive }) =>
-    `px-3 py-2 rounded-md text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 focus:ring-offset-2 focus:ring-offset-white ${isActive
-      ? "text-[#FF8C42] font-semibold"
-      : "text-[#90A4AE] hover:text-[#263238]"
-    }`;
+  // Close mobile menu on Escape for accessibility
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape' && mobileOpen) setMobileOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mobileOpen]);
 
-  const actionClass =
-    "px-3 py-2 rounded-md text-sm font-medium text-[#263238] hover:text-[#FF8C42] transition focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 focus:ring-offset-2 focus:ring-offset-white";
+  
+
+  // Shared nav item classes for consistent styling across header links/buttons
+  const navItemBase = "px-3 py-2 rounded-md text-sm font-medium transition focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 focus:ring-offset-2 focus:ring-offset-white";
+  const navItemInactive = "text-[#90A4AE] hover:text-[#263238]";
+
+  // Only apply hover styles for links; remove active styling so links do not
+  // visually change when active. Keep consistent padding/focus behavior.
+  const baseLink = () => `${navItemBase} ${navItemInactive}`;
+
+  const actionClass = `${navItemBase} text-[#263238] hover:text-[#FF8C42]`;
 
   const adminNav = (
     <>
@@ -79,7 +97,7 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
       <NavLink
         to="#"
         onClick={() => onShowPhq9 && onShowPhq9()}
-        className={actionClass}
+        className={baseLink}
       >
         Screening
       </NavLink>
@@ -99,121 +117,121 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
     </NavLink>
   );
 
+  // Read global pageReady flag (set by App) to decide if header should be glassy or solid
+  let pageReadyFlag = true;
+  try { if (typeof window !== 'undefined') pageReadyFlag = !!window.__mindsphere_pageReady; } catch(e) { pageReadyFlag = true; }
+
+  // If the page isn't ready, render a compact header (logo + title only) to avoid
+  // layout shifts when the loader hides. When ready, render the full header.
   return (
-    <header className="fixed inset-x-0 top-4 z-50 pointer-events-auto">
-      <div className="max-w-7xl mx-auto rounded-xl shadow-xl bg-white/70 backdrop-blur-sm border border-gray-200">
+    <header className="fixed inset-x-0 top-4 z-50 pointer-events-auto m-2">
+      <div className={`max-w-7xl mx-auto rounded-xl shadow-xl bg-white border border-gray-200`}>
         <div className="flex items-center justify-between h-16 px-4 sm:px-6">
-          {/* Left: Logo + Menu */}
           <div className="flex items-center gap-3">
+            {/* Hamburger for responsive nav (placed before logo) - always shown on small screens */}
             <button
-              className="md:hidden p-2 rounded focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30"
-              onClick={() => setMobileOpen((o) => !o)}
-              aria-label="Toggle menu"
+              aria-label={mobileOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileOpen}
+              aria-controls="main-navigation"
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="p-2 rounded-md mr-1 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 md:hidden"
             >
-              <svg
-                className="w-6 h-6 text-[#FF8C42]"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d={
-                    mobileOpen
-                      ? "M6 18L18 6M6 6l12 12"
-                      : "M4 6h16M4 12h16M4 18h16"
-                  }
-                />
-              </svg>
+              {!mobileOpen ? (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M3 6h18M3 12h18M3 18h18" stroke="#263238" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M6 6l12 12M6 18L18 6" stroke="#263238" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
             </button>
 
-            <NavLink
-              to="/"
-              className="flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30"
-            >
+            {/* On Logo Click Go to Landing Page */}
+            <NavLink to="/landing" className="flex items-center gap-3 focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30">
               <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-gray-100">
-                <img
-                  src="/mindsphere-logo.png"
-                  alt="MindSphere"
-                  className="w-7 h-7"
-                />
+                <img src="/mindsphere-logo.png" alt="MindSphere" className="w-7 h-7" />
               </div>
-              <span className="text-xl md:text-2xl font-extrabold text-[#263238]">
-                MindSphere
-              </span>
+              <span className="text-xl md:text-2xl font-extrabold text-[#263238]">MindSphere</span>
             </NavLink>
           </div>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-4">
-            {user?.role === "admin"
-              ? adminNav
-              : user?.role === "counsellor"
-                ? counsellorNav
-                : defaultNav}
-          </nav>
+          {/* If there's an authenticated user or an optimistic fallback role, show the full nav
+              but only when the page is ready. For unauthenticated users, always show the
+              minimal CTA (Get Started) regardless of the pageReadyFlag to avoid a missing
+              CTA during loading. */}
+          {((user && user.role) || fallbackRole) ? (
+            // Authenticated or optimistic role: always show nav/profile to avoid disappearing links
+            <>
+              <nav className="hidden md:flex items-center gap-4">
+                {((user && user.role) || fallbackRole) === "admin"
+                  ? adminNav
+                  : ((user && user.role) || fallbackRole) === "counsellor"
+                    ? counsellorNav
+                    : defaultNav}
+              </nav>
 
-          {/* Right side: Profile + Logout */}
-          <div className="flex items-center gap-3">
-            {/* Profile Avatar */}
-            {user && (
-              <button
-                onClick={() => {
-                  if (user.role === "user") navigate("/profile"); // 👈 admin profile page
-                  else if (user.role === "counsellor") navigate("/CounsellorProfile"); // 👈 counsellor profile page
-                  // else navigate("/profile"); // 👤 default user profile page
-                }}
-                className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md hover:scale-105 transition"
-                title="Your Profile"
-              >
-                {user.role === "admin" ? (
-                  <img
-                    src="/admin.png"
-                    alt="Admin"
-                    className="object-cover w-8 h-8"
-                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }}
-                  />
-                ) : user.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt="Profile"
-                    className="w-full h-full object-cover"
-                    onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }}
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-[#FF8C42] text-white font-bold text-lg">
-                    {user.email?.[0]?.toUpperCase() || "U"}
+              <div className="hidden md:flex items-center gap-3">
+                {user && (
+                  <button
+                    onClick={() => {
+                      if (user.role === "user") navigate("/profile");
+                      else if (user.role === "counsellor") navigate("/CounsellorProfile");
+                    }}
+                    className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md hover:scale-105 transition"
+                    title="Your Profile"
+                  >
+                    {user.role === "admin" ? (
+                      <img src="/admin.png" alt="Admin" className="object-cover w-8 h-8" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }} />
+                    ) : user.photoURL ? (
+                      <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }} />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-[#FF8C42] text-white font-bold text-lg">{user.email?.[0]?.toUpperCase() || "U"}</div>
+                    )}
+                  </button>
+                )}
+
+                <button onClick={() => onLogout && onLogout()} className="px-3 py-1 rounded-md bg-white text-[#263238] font-semibold hover:bg-gray-50 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30">Logout</button>
+              </div>
+            </>
+          ) : (
+            // Unauthenticated: always show Get Started CTA regardless of pageReadyFlag
+            <div className="flex items-center gap-3">
+              <button onClick={() => navigate('/auth')} className="px-4 py-2 rounded-md bg-[#FF8C42] text-white font-semibold hover:bg-[#e6732f] focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30">Get Started</button>
+            </div>
+          )}
+          </div>
+
+          {mobileOpen && (
+            <div id="main-navigation" className="md:hidden border-t border-gray-200 bg-white">
+              <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-2 rounded-b-2xl">
+                {/* Links for mobile: show appropriate nav */}
+                {((user && user.role) || fallbackRole) === "admin" ? adminNav : ((user && user.role) || fallbackRole) === "counsellor" ? counsellorNav : defaultNav}
+
+                {/* If authenticated, show profile and logout in mobile menu */}
+                {user && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <button onClick={() => { setMobileOpen(false); navigate('/profile'); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-gray-50">
+                      {user.photoURL ? (
+                        <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full object-cover" />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-[#FF8C42] text-white flex items-center justify-center font-bold">{user.email?.[0]?.toUpperCase() || 'U'}</div>
+                      )}
+                      <div className="text-sm font-medium text-[#263238]">Profile</div>
+                    </button>
+                    <button onClick={() => { setMobileOpen(false); onLogout && onLogout(); }} className="mt-2 w-full px-3 py-2 rounded-md bg-white text-[#263238] font-semibold hover:bg-gray-50 border border-gray-200 text-sm">Logout</button>
                   </div>
                 )}
-              </button>
-            )}
 
-
-            {/* Logout */}
-            <button
-              onClick={() => onLogout && onLogout()}
-              className="px-3 py-1 rounded-md bg-white/70 text-[#263238] font-semibold hover:bg-white border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Menu */}
-        {mobileOpen && (
-          <div className="md:hidden border-t border-gray-200 bg-white/70">
-            <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-2 rounded-b-2xl">
-              {user?.role === "admin"
-                ? adminNav
-                : user?.role === "counsellor"
-                  ? counsellorNav
-                  : defaultNav}
+                {/* Unauthenticated users: show Get Started in mobile panel */}
+                {!user && (
+                  <div className="mt-2 pt-2 border-t border-gray-100">
+                    <button onClick={() => { setMobileOpen(false); navigate('/auth'); }} className="w-full px-3 py-2 rounded-md bg-[#FF8C42] text-white font-semibold hover:bg-[#e6732f]">Get Started</button>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          )}
       </div>
     </header>
   );

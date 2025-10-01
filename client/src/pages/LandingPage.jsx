@@ -20,7 +20,7 @@ import {
 } from 'react-icons/io5';
 
 // Image imports
-import mindsphereLogo from '../assets/mindsphere-logo.png';
+// ...existing image imports
 import heroBgIllustration from '../assets/hero-bg-illustration.png'; // New blurred background image for hero
 import heroAbstractElements from '../assets/hero-abstract-elements.png'; // New abstract elements image
 import testimonialAvatar from '../assets/testimonial-avatar.png';
@@ -127,18 +127,23 @@ const LandingPage = () => {
   ];
 
   const handleGetStarted = () => {
-    navigate('/login');
+    navigate('/auth');
   };
 
-  // Generic handler for "Service" buttons to redirect to login
+  // Signal to the top-level App that the landing page is ready immediately on mount.
+  React.useEffect(() => {
+    try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
+  }, []);
+
+  // Generic handler for "Service" buttons to redirect to auth
   const handleServiceButtonClick = () => {
-    navigate('/login');
+    navigate('/auth');
   };
 
   return (
     <div className="min-h-screen bg-[#F0F2F5] font-sans text-[#263238] overflow-x-hidden antialiased relative">
-      {/* Global CSS for shimmer and custom animations */}
-      <style jsx>{`
+  {/* Global CSS for shimmer and custom animations */}
+  <style>{`
         @keyframes shimmer {
           0% { transform: translateX(-100%); }
           100% { transform: translateX(100%); }
@@ -192,30 +197,9 @@ const LandingPage = () => {
             background-image: linear-gradient(#3a3a4c 1px, transparent 1px), linear-gradient(to right, #3a3a4c 1px, transparent 1px);
             background-size: 40px 40px;
         }
-      `}</style>
+  `}</style>
 
-      {/* Navbar */}
-      <motion.nav
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        transition={{ type: "spring", stiffness: 80, damping: 15, delay: 0.1 }}
-        className="fixed w-full z-[100] bg-white/70 backdrop-blur-lg shadow-lg py-4 border-b border-gray-100/50"
-      >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <div className="bg-white p-2 rounded-full shadow-md transform hover:scale-105 transition-transform duration-200">
-              <img src={mindsphereLogo} alt="MindSphere Logo" className="h-7 w-7" />
-            </div>
-            <span className="text-2xl font-bold text-[#263238]">MindSphere</span>
-          </div>
-          <div className="flex items-center space-x-7 ">
-            <a href="#features" className="text-[#263238] hover:text-[#263238] font-medium transition-colors text-base hidden sm:block hover:underline transition hover:scale-105 ">Features</a>
-            <PrimaryButton onClick={handleGetStarted} className="px-5 py-2 text-base cursor-pointer">
-              Get Started
-            </PrimaryButton>
-          </div>
-        </div>
-      </motion.nav>
+      {/* Navbar removed — single global Header is mounted in App.jsx */}
 
       {/* Hero Section */}
       <section ref={heroRef} className="relative bg-gradient-to-br from-[#1A1A2E] to-[#0F0F1A] min-h-screen flex items-center justify-center pt-24 pb-12 overflow-hidden">
@@ -444,10 +428,7 @@ const LandingPage = () => {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="bg-[#263238] text-white py-5 border-t-4 border-gray-700 text-center">
-          <p>&copy; {new Date().getFullYear()} MindSphere. All rights reserved.</p>
-      </footer>
+      {/* Footer removed; global Footer component is mounted in App.jsx */}
     </div>
   );
 };

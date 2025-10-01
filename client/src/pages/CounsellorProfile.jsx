@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { User, MapPin, Edit3, Save, Loader, BookOpen, Calendar, FileText } from "lucide-react";
+import LogoLoader from "../components/LogoLoader";
 import { db } from "../firebase.js";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthChange } from "../services/auth.js";
@@ -105,8 +106,20 @@ export default function CounsellorProfile() {
     setErrors({});
   };
 
+  // Show the branded full-page loader while the counsellor profile is being loaded.
   if (dataLoading)
-    return <Loader className="w-10 h-10 animate-spin mx-auto mt-24 text-[#263238]" />;
+    return (
+      <LogoLoader active={true} minDuration={2000} overlay overlayOpacity={0.92} blockInteraction={false} />
+    );
+
+  // Notify the top-level App that this page is ready once dataLoading becomes false.
+  useEffect(() => {
+    if (!dataLoading) {
+      try {
+        window.dispatchEvent(new CustomEvent('mindsphere:pageReady'));
+      } catch (e) {}
+    }
+  }, [dataLoading]);
 
   if (!user)
     return (

@@ -240,8 +240,42 @@ const PeerToPeer = () => {
 
       // wire up the same listeners setupSocketListeners used to register
       s.on('initial_posts', (items) => setPosts(items || []));
-      s.on('post_created', (post) => setPosts(prev => [post, ...prev]));
-      s.on('post_updated', ({ postId, updates }) => setPosts(prev => prev.map(post => post.id === postId ? { ...post, ...updates } : post)));
+      // When server confirms a created post, replace any optimistic post that has the same clientTempId
+      s.on('post_created', (serverPost) => {
+        try {
+          if (serverPost && serverPost.clientTempId) {
+            setPosts(prev => {
+              let replaced = false;
+              const next = prev.map(p => {
+                if (p && p.clientTempId && p.clientTempId === serverPost.clientTempId) {
+                  replaced = true;
+                  return serverPost;
+                }
+                return p;
+              });
+              if (!replaced) return [serverPost, ...prev];
+              return next;
+            });
+          } else {
+            setPosts(prev => [serverPost, ...prev]);
+          }
+        } catch (e) {
+          console.warn('post_created handler failed', e);
+          setPosts(prev => [serverPost, ...prev]);
+        }
+      });
+      // post_updated may now send the full post object; accept both shapes
+      s.on('post_updated', (payload) => {
+        // payload could be { postId, updates } or the full post document
+        if (!payload) return;
+        if (payload.id) {
+          const fullPost = payload;
+          setPosts(prev => prev.map(p => String(p.id) === String(fullPost.id) ? fullPost : p));
+        } else if (payload.postId) {
+          const { postId, updates } = payload;
+          setPosts(prev => prev.map(post => String(post.id) === String(postId) ? { ...post, ...(updates || {}) } : post));
+        }
+      });
       s.on('post_deleted', ({ postId }) => setPosts(prev => prev.filter(post => post.id !== postId)));
 
       s.on('reply_added', ({ postId, reply }) => setPosts(prev => prev.map(post => {
@@ -412,7 +446,8 @@ const PeerToPeer = () => {
     } catch (err) {
       setError(utils.formatError(err));
     } finally {
-      setLoading(false);
+        setLoading(false);
+        try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
     }
   };
 
@@ -451,9 +486,11 @@ const PeerToPeer = () => {
       // In production, call API
       // const createdPost = response.data;
 
-      // Mock post creation for demo
+      // Mock post creation for demo (optimistic with clientTempId)
+      const tempId = `tmp-${Date.now()}`;
       const post = {
-        id: Date.now(),
+        id: tempId,
+        clientTempId: tempId,
         ...postData,
         author: newPost.anonymous 
           ? { id: user.id, name: 'Anonymous', role: user.role, email: user.email }
@@ -464,6 +501,7 @@ const PeerToPeer = () => {
         replies: []
       };
 
+      // Insert optimistic post locally. Server will echo canonical post_created including clientTempId
       setPosts(prev => [post, ...prev]);
       setNewPost({ title: '', content: '', category: 'General', anonymous: false });
       setShowCreatePost(false);
@@ -936,10 +974,7 @@ const PeerToPeer = () => {
         {loading && (
           <div className="flex justify-center items-center py-16">
             <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-lg border border-white/20 p-8">
-              <div className="flex items-center space-x-4">
-                <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-200 border-t-blue-600"></div>
-                <span className="text-calm-blue font-medium">Loading discussions...</span>
-              </div>
+              <LogoLoader active={true} minDuration={2000} size={64} text={"Loading discussions..."} />
             </div>
           </div>
         )}

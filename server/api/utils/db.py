@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import uuid
 
 try:
     from pymongo import MongoClient
@@ -84,7 +85,7 @@ def create_chat_session(user_email: str = None):
     if chat_in_memory is None:
         globals()['chat_in_memory'] = []
     store = globals().get('chat_in_memory')
-    sid = f"mem-{int(now.timestamp()*1000)}"
+    sid = f"mem-{uuid.uuid4().hex}"
     sess = {"id": sid, "user_email": email_lower, "createdAt": now, "messages": []}
     store.insert(0, sess)
     return sid
@@ -107,14 +108,18 @@ def append_message_to_session(session_id: str, message: dict):
             return False
         return False
 
-    # in-memory fallback
-    store = globals().get('chat_in_memory') or {}
+    # in-memory fallback: chat_in_memory is a list of session dicts
+    store = globals().get('chat_in_memory') or []
     # find session by id
-    for email, sessions in store.items():
-        for s in sessions:
-            if s.get('id') == session_id:
-                s.setdefault('messages', []).append(message)
-                return True
+    for s in store:
+        if s.get('id') == session_id:
+            s.setdefault('messages', [])
+            # append a shallow copy of the message to avoid accidental shared references
+            try:
+                s['messages'].append(dict(message))
+            except Exception:
+                s['messages'].append(message)
+            return True
     return False
 
 
@@ -139,11 +144,26 @@ def get_sessions_by_email(email: str = None):
                     s.pop('_id', None)
                 msgs = s.get('messages', []) or []
                 last = msgs[-1] if msgs else None
+                # trim lastMessage to a lightweight shape
+                lm = None
+                if last:
+                    lm = {
+                        'text': last.get('text') or last.get('message') or last.get('content') or '',
+                        'from': last.get('from') or last.get('role') or None,
+                        'timestamp': None
+                    }
+                    try:
+                        if 'timestamp' in last and hasattr(last['timestamp'], 'isoformat'):
+                            lm['timestamp'] = last['timestamp'].isoformat()
+                        else:
+                            lm['timestamp'] = last.get('timestamp')
+                    except Exception:
+                        lm['timestamp'] = last.get('timestamp')
                 out.append({
                     'id': s.get('id'),
                     'createdAt': s.get('createdAt'),
                     'messageCount': len(msgs),
-                    'lastMessage': last
+                    'lastMessage': lm
                 })
             return out
         except Exception:
@@ -159,8 +179,16 @@ def get_sessions_by_email(email: str = None):
     return out
 
 
-def get_session_messages(email: str = None, session_id: str = None):
-    """Return messages for a session. If email is provided, it's used as an optional check, otherwise session is looked up by id."""
+def get_session_messages(email: str = None, session_id: str = None, limit: int = None, offset: int = 0, tail: bool = False):
+    """Return messages for a session.
+
+    Parameters:
+    - email: optional email to verify session ownership
+    - session_id: required session id
+    - limit: optional number of messages to return
+    - offset: optional start index (0-based) when not tail
+    - tail: when True and limit provided, return the last `limit` messages
+    """
     if not session_id:
         return None
     email_lower = (email or None)
@@ -175,18 +203,36 @@ def get_session_messages(email: str = None, session_id: str = None):
             query = {"_id": oid}
             if email_lower:
                 query['user_email'] = email_lower
-            doc = chat_collection.find_one(query)
+
+            # If limit provided, use Mongo projection with $slice to avoid loading huge arrays
+            if isinstance(limit, int) and limit > 0:
+                if tail:
+                    projection = {'messages': {'$slice': -limit}}
+                else:
+                    # slice with offset and limit
+                    try:
+                        o = int(offset) if offset and int(offset) >= 0 else 0
+                    except Exception:
+                        o = 0
+                    projection = {'messages': {'$slice': [o, limit]}}
+                doc = chat_collection.find_one(query, projection)
+            else:
+                doc = chat_collection.find_one(query)
+
             if not doc:
                 return None
             msgs = doc.get('messages', []) or []
             # convert datetimes if present
+            out = []
             for m in msgs:
-                if 'timestamp' in m and hasattr(m['timestamp'], 'isoformat'):
+                mm = dict(m)
+                if 'timestamp' in mm and hasattr(mm['timestamp'], 'isoformat'):
                     try:
-                        m['timestamp'] = m['timestamp'].isoformat()
+                        mm['timestamp'] = mm['timestamp'].isoformat()
                     except Exception:
                         pass
-            return msgs
+                out.append(mm)
+            return out
         except Exception:
             return None
 
@@ -198,8 +244,19 @@ def get_session_messages(email: str = None, session_id: str = None):
             if email_lower and s.get('user_email') and s.get('user_email') != email_lower:
                 return None
             msgs = s.get('messages', []) or []
+            if isinstance(limit, int) and limit > 0:
+                if tail:
+                    sel = msgs[-limit:]
+                else:
+                    try:
+                        o = int(offset) if offset and int(offset) >= 0 else 0
+                    except Exception:
+                        o = 0
+                    sel = msgs[o:o+limit]
+            else:
+                sel = msgs
             out = []
-            for m in msgs:
+            for m in sel:
                 mm = dict(m)
                 if 'timestamp' in mm and hasattr(mm['timestamp'], 'isoformat'):
                     try:

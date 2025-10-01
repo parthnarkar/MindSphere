@@ -18,6 +18,67 @@ CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 app.config.update({'JSON_SORT_KEYS': False})
 
 
+# Ensure CORS headers are present on every response (including error responses)
+@app.after_request
+def _add_cors_headers(response):
+	try:
+		# Mirror wildcard origin — for production consider restricting this to allowed origins
+		response.headers['Access-Control-Allow-Origin'] = '*'
+		response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
+		response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+		# Do not allow credentials by default here (consistent with CORS(...) above)
+		response.headers['Access-Control-Allow-Credentials'] = 'false'
+	except Exception:
+		pass
+	return response
+
+
+# Global error handler that returns JSON and ensures CORS headers are present
+@app.errorhandler(Exception)
+def _handle_uncaught_error(err):
+	# Log full traceback to the console to help debugging
+	import traceback
+	traceback.print_exc()
+	# Build a simple JSON payload for the client
+	payload = { 'error': 'internal_server_error', 'details': str(err) }
+	from flask import make_response, jsonify
+	resp = make_response(jsonify(payload), 500)
+	# Ensure our CORS headers are present on the error response as well
+	resp.headers['Access-Control-Allow-Origin'] = '*'
+	resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
+	resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+	resp.headers['Access-Control-Allow-Credentials'] = 'false'
+	return resp
+
+
+# Return a friendly JSON response for common HTTP errors (NotFound / MethodNotAllowed)
+from werkzeug.exceptions import NotFound, MethodNotAllowed
+
+
+@app.errorhandler(NotFound)
+def _handle_not_found(err):
+	from flask import make_response, jsonify, request
+	payload = {'error': 'not_found', 'path': request.path, 'details': str(err)}
+	resp = make_response(jsonify(payload), 404)
+	resp.headers['Access-Control-Allow-Origin'] = '*'
+	resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
+	resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+	resp.headers['Access-Control-Allow-Credentials'] = 'false'
+	return resp
+
+
+@app.errorhandler(MethodNotAllowed)
+def _handle_method_not_allowed(err):
+	from flask import make_response, jsonify, request
+	payload = {'error': 'method_not_allowed', 'path': request.path, 'details': str(err)}
+	resp = make_response(jsonify(payload), 405)
+	resp.headers['Access-Control-Allow-Origin'] = '*'
+	resp.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
+	resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+	resp.headers['Access-Control-Allow-Credentials'] = 'false'
+	return resp
+
+
 # Ensure any CORS preflight (OPTIONS) is answered early with a success status so browsers allow the actual request.
 @app.before_request
 def _handle_global_options():
@@ -63,19 +124,47 @@ def health():
 def api_chat():
 	if request.method == 'OPTIONS':
 		return '', 204
+
 	data = request.get_json() or {}
 	# Ignore any client-side intent hints; detect on server for a single source of truth
 	user_message = data.get('message') or data.get('text')
 	if not user_message:
 		return jsonify({"error": "Message is required"}), 400
+
 	# Run server-side intent detection first
 	detected = helpers.detect_intent(user_message)
 	# Allow optional conversation history passed from the client so the model can reference prior turns
 	history = data.get('history') if isinstance(data, dict) else None
 
-	# Crisis handling: ask the model to generate the crisis-aware reply so no hardcoded text is returned
+	# If a session_id was supplied and the client did not include history, try to load
+	# recent messages from the server-side session store (MongoDB) and use the last 10
+	# turns as the context. This ensures the model sees canonical conversation state.
+	session_id = data.get('session_id') or data.get('sessionId') or None
+	session_email = (data.get('user_email') or data.get('userEmail') or None)
+	if isinstance(session_email, str):
+		session_email = session_email.lower()
+	if not history and session_id:
+		try:
+			# request only the last 10 messages from the server-side session store
+			msgs = dbutils.get_session_messages(session_email, session_id, limit=10, tail=True) or []
+			# messages returned are chronological (oldest->newest) when using slice; last10 is msgs
+			last10 = msgs if isinstance(msgs, list) else []
+			hist = []
+			for m in last10:
+				text = m.get('text') or m.get('message') or m.get('content') or ''
+				role = m.get('from') or m.get('role') or 'user'
+				hist.append({'role': role, 'message': text, 'timestamp': m.get('timestamp')})
+			if hist:
+				history = hist
+		except Exception:
+			# if DB read fails, proceed without history
+			history = history
+
+	# Simple API-facing intent mapping
+	simple_intent = 'unsafe' if detected.get('unsafe') else 'safe'
+
+	# 1) Crisis handling: ask the model to generate a crisis-aware reply
 	if detected.get('intent') == 'crisis' or helpers.detect_crisis(user_message):
-		# Use the global coping prompt persona as a base and ask for a brief crisis-aware reply
 		prompt = (
 			helpers.COPING_SYSTEM_PROMPT + "\n" +
 			"The user message indicates a possible crisis. Provide a short, empathetic reply that urges the user to seek immediate help and lists crisis resources (hotlines, emergency services) where appropriate. "
@@ -86,11 +175,10 @@ def api_chat():
 			text = modelutils.generate_coping_text(prompt)
 		except Exception as e:
 			return jsonify({"error": "Model generation failed", "details": str(e)}), 500
-		return jsonify({"response": text, "escalate": True, "intent": "crisis", "intentConfidence": detected.get('confidence', 1.0)})
+		return jsonify({"response": text, "escalate": True, "intent": simple_intent, "intentConfidence": detected.get('confidence', 1.0), "detected": detected})
 
-	# Topic gate: if message isn't clearly student MH-related, ask the model to craft a clarifying question
+	# 2) Topic gate: if message isn't clearly student MH-related, ask for a clarifying question
 	if not helpers.looks_student_mh_related(user_message):
-		# Use the same persona + prompt builder so history (if provided) is included and the model keeps the conversational style
 		clarify_text = (
 			"[clarify] Please generate one brief clarifying question (one sentence) asking whether the user is discussing how they are feeling or a different topic. "
 			f"If helpful, reference prior turns from the conversation history.\nUser message: {user_message}"
@@ -100,14 +188,16 @@ def api_chat():
 			text = modelutils.generate_coping_text(prompt)
 		except Exception as e:
 			return jsonify({"error": "Model generation failed", "details": str(e)}), 500
-		return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence')})
+		return jsonify({"response": text, "escalate": False, "intent": simple_intent, "intentConfidence": detected.get('confidence'), "detected": detected})
+
+	# 3) Normal flow: generate a coping-style reply based on detected intent
 	prompt = helpers.build_coping_prompt(f"[intent={detected.get('intent')}] {user_message}", history=history)
 	try:
 		text = modelutils.generate_coping_text(prompt)
 	except Exception as e:
 		# Surface the model error to the client (5xx). Caller requested strict model-only behavior.
 		return jsonify({"error": "Model generation failed", "details": str(e)}), 500
-	return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence')})
+	return jsonify({"response": text, "escalate": False, "intent": simple_intent, "intentConfidence": detected.get('confidence'), "detected": detected})
 
 
 @bp.route('/api/chat/session', methods=['POST', 'GET', 'OPTIONS'])
@@ -135,28 +225,39 @@ def api_chat_session():
 
 @bp.route('/api/chat/session/<session_id>/messages', methods=['GET', 'POST', 'OPTIONS'])
 def api_chat_session_messages(session_id):
-    if request.method == 'OPTIONS':
-        return '', 204
-    if request.method == 'GET':
-        email = request.args.get('email') or None
-        msgs = dbutils.get_session_messages(email, session_id)
-        if msgs is None:
-            return jsonify({"messages": []})
-        return jsonify({"messages": msgs})
+	if request.method == 'OPTIONS':
+		return '', 204
 
-    # POST -> append a message
-    data = request.get_json() or {}
-    email = data.get('user_email') or None
-    message = data.get('message') or {}
-    if not session_id or not message:
-        return jsonify({"error": "session_id and message required"}), 400
-    # ensure timestamp
-    if 'timestamp' not in message:
-        message['timestamp'] = datetime.utcnow()
-    ok = dbutils.append_message_to_session(session_id, message)
-    if ok:
-        return jsonify({"ok": True}), 201
-    return jsonify({"error": "could not append message"}), 500
+	if request.method == 'GET':
+		email = request.args.get('email') or None
+		# pagination support
+		try:
+			limit = int(request.args.get('limit')) if request.args.get('limit') else None
+		except Exception:
+			limit = None
+		try:
+			offset = int(request.args.get('offset') or 0)
+		except Exception:
+			offset = 0
+		tail = request.args.get('tail', 'false').lower() in ('1', 'true', 'yes')
+		msgs = dbutils.get_session_messages(email, session_id, limit=limit, offset=offset, tail=tail)
+		if msgs is None:
+			return jsonify({"messages": []})
+		return jsonify({"messages": msgs})
+
+	# POST -> append a message
+	data = request.get_json() or {}
+	email = data.get('user_email') or None
+	message = data.get('message') or {}
+	if not session_id or not message:
+		return jsonify({"error": "session_id and message required"}), 400
+	# ensure timestamp
+	if 'timestamp' not in message:
+		message['timestamp'] = datetime.utcnow()
+	ok = dbutils.append_message_to_session(session_id, message)
+	if ok:
+		return jsonify({"ok": True}), 201
+	return jsonify({"error": "could not append message"}), 500
 
 
 

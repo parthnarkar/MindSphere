@@ -46,11 +46,11 @@ export default function Resources() {
   const [localResources, setLocalResources] = useState([]);
   const [openSourceList] = useState(OPEN_SOURCE);
 
-  // Loading & error
-  const [loading, setLoading] = useState(false);
+  // Error
   const [error, setError] = useState(null);
 
   const controllerRef = useRef(null);
+  const cacheRef = useRef(new Map());
 
   // UI / pagination state
   const [activeFilter, setActiveFilter] = useState("all");
@@ -66,7 +66,7 @@ export default function Resources() {
   const ACCENT_LIGHT = "#faf3efff"; // very light background shade
   const ACCENT_HOVER = "#4b4b4bff"; // hover / stronger shade --- IGNORE ---
 
-  // Debounced search function
+  // Debounced search function with in-memory caching and partial-result rendering
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const doSearch = useCallback(
     debounce(async (q) => {
@@ -78,8 +78,18 @@ export default function Resources() {
         return;
       }
 
-      setLoading(true);
-      setError(null);
+      const key = `${q.trim().toLowerCase()}|v${ytLimit}|b${bookLimit}`;
+      // Return cached results immediately if present
+      if (cacheRef.current.has(key)) {
+        const cached = cacheRef.current.get(key);
+        setYtResults(cached.ytResults || []);
+        setWikiResults(cached.wikiResults || []);
+        setBookResults(cached.bookResults || []);
+        setLocalResources(cached.localResources || []);
+        return;
+      }
+
+  setError(null);
 
       // Cancel previous fetches
       if (controllerRef.current) controllerRef.current.abort();
@@ -88,79 +98,109 @@ export default function Resources() {
       const signal = controllerRef.current.signal;
 
       try {
-        // Parallel fetches: YouTube (search), Wikipedia, OpenLibrary, local resources
-        const searchTasks = [];
+        // Build fetch promises but handle each result as it arrives to render incrementally
+        const base = API;
 
-        // YouTube search (client-side) — requires API key
+        // Track partial results to update cache incrementally
+        const partial = { ytResults: [], wikiResults: [], bookResults: [], localResources: [] };
+
+        // YouTube
+        let ytPromise;
         if (YT_KEY) {
-          const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${ytLimit}&q=${encodeURIComponent(
-            q
-          )}&key=${YT_KEY}`;
-          searchTasks.push(fetch(ytUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))));
+          const ytUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=${ytLimit}&q=${encodeURIComponent(q)}&key=${YT_KEY}`;
+          ytPromise = fetch(ytUrl, { signal })
+            .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+            .then((ytResp) => {
+              const ytItems = (ytResp && ytResp.items) || [];
+              const mappedYt = ytItems.map((it) => ({
+                id: it.id.videoId || (it.id && it.id.videoId) || Math.random().toString(36).slice(2, 9),
+                title: it.snippet?.title || "Untitled",
+                channel: it.snippet?.channelTitle || "",
+                thumbnail: it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url || "",
+              }));
+              partial.ytResults = mappedYt;
+              setYtResults(mappedYt);
+              return mappedYt;
+            })
+            .catch(() => {
+              partial.ytResults = [];
+              setYtResults([]);
+            });
         } else {
-          // If no key, keep results empty (we show a hint to set the key)
-          searchTasks.push(Promise.resolve({ items: [] }));
+          ytPromise = Promise.resolve([]).then((arr) => { partial.ytResults = []; setYtResults([]); return []; });
         }
 
-        // Wikipedia search (opensearch) — lightweight
-        const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
-          q
-        )}&utf8=&format=json&origin=*`;
-        searchTasks.push(fetch(wikiUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))));
+        // Wikipedia
+        const wikiUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&utf8=&format=json&origin=*`;
+        const wikiPromise = fetch(wikiUrl, { signal })
+          .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+          .then((wikiResp) => {
+            const wikiItems = (wikiResp?.query?.search || []).slice(0, 6).map((s) => ({
+              id: s.pageid,
+              title: s.title,
+              snippet: s.snippet.replace(/<\/?span[^>]*>/g, ""),
+              url: `https://en.wikipedia.org/?curid=${s.pageid}`,
+            }));
+            partial.wikiResults = wikiItems;
+            setWikiResults(wikiItems);
+            return wikiItems;
+          })
+          .catch(() => { partial.wikiResults = []; setWikiResults([]); });
 
-        // OpenLibrary search for books
-  const booksUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=${bookLimit}`;
-        searchTasks.push(fetch(booksUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))));
-
-        // Local API resources
-        const base = API;
-        const localUrl = `${base.replace(/\/$/, "")}/api/resources?query=${encodeURIComponent(q)}`;
-        searchTasks.push(fetch(localUrl, { signal }).then((r) => (r.ok ? r.json() : Promise.reject(r))).catch(() => ({ resources: [] })));
-
-        const [ytResp, wikiResp, booksResp, localResp] = await Promise.all(searchTasks);
-
-        // Process YouTube
-        const ytItems = (ytResp && ytResp.items) || [];
-        const mappedYt = ytItems.map((it) => ({
-          id: it.id.videoId || (it.id && it.id.videoId) || Math.random().toString(36).slice(2, 9),
-          title: it.snippet?.title || "Untitled",
-          channel: it.snippet?.channelTitle || "",
-          thumbnail: it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url || "",
-        }));
-
-        // Process Wiki
-        const wikiItems = (wikiResp?.query?.search || []).slice(0, 6).map((s) => ({
-          id: s.pageid,
-          title: s.title,
-          snippet: s.snippet.replace(/<\/?span[^>]*>/g, ""),
-          url: `https://en.wikipedia.org/?curid=${s.pageid}`,
-        }));
-
-        // Process books
-        const bookDocs = (booksResp?.docs || []).slice(0, 6).map((b) => ({
-          id: b.key,
-          title: b.title,
-          author: (b.author_name && b.author_name.join(", ")) || "",
-          year: b.first_publish_year || "",
-          cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null,
-        }));
+        // OpenLibrary books
+        const booksUrl = `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=${bookLimit}`;
+        const booksPromise = fetch(booksUrl, { signal })
+          .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+          .then((booksResp) => {
+            const bookDocs = (booksResp?.docs || []).slice(0, 6).map((b) => ({
+              id: b.key,
+              title: b.title,
+              author: (b.author_name && b.author_name.join(", ")) || "",
+              year: b.first_publish_year || "",
+              cover: b.cover_i ? `https://covers.openlibrary.org/b/id/${b.cover_i}-M.jpg` : null,
+            }));
+            partial.bookResults = bookDocs;
+            setBookResults(bookDocs);
+            return bookDocs;
+          })
+          .catch(() => { partial.bookResults = []; setBookResults([]); });
 
         // Local resources
-        const local = (localResp?.resources || localResp) || [];
+        const localUrl = `${base.replace(/\/$/, "")}/api/resources?query=${encodeURIComponent(q)}`;
+        const localPromise = fetch(localUrl, { signal })
+          .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+          .then((localResp) => {
+            const local = (localResp?.resources || localResp) || [];
+            partial.localResources = Array.isArray(local) ? local : [];
+            setLocalResources(Array.isArray(local) ? local : []);
+            return partial.localResources;
+          })
+          .catch(() => { partial.localResources = []; setLocalResources([]); });
 
-        setYtResults(mappedYt);
-        setWikiResults(wikiItems);
-        setBookResults(bookDocs);
-        setLocalResources(Array.isArray(local) ? local : []);
-        // keep curated list available
-        // openSourceList is static, no need to set state
-      } catch (err) {
-        if (err.name === "AbortError") return; // user typed again
-        console.error(err);
-        setError(err.message || "Search failed");
-      } finally {
-        setLoading(false);
-      }
+        // Wait for all to settle so we can update loading flag and final cache
+        const settled = await Promise.allSettled([ytPromise, wikiPromise, booksPromise, localPromise]);
+
+        // Save combined cache entry
+        try {
+          cacheRef.current.set(key, {
+            ytResults: partial.ytResults,
+            wikiResults: partial.wikiResults,
+            bookResults: partial.bookResults,
+            localResources: partial.localResources,
+          });
+          if (cacheRef.current.size > 80) {
+            const firstKey = cacheRef.current.keys().next().value;
+            cacheRef.current.delete(firstKey);
+          }
+        } catch (err) {
+          // ignore cache errors
+        }
+
+        } catch (err) {
+            if (err.name === "AbortError") return; // user typed again
+            console.error(err);
+            setError(err.message || "Search failed");
+          }
     }, 450),
     [YT_KEY, ytLimit, bookLimit]
   );
@@ -256,31 +296,17 @@ export default function Resources() {
                 </div>
 
                 <div className="bg-white p-4 rounded-lg shadow-sm">
-                  {loading && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {[...Array(4)].map((_, i) => (
-                        <div key={i} className="flex gap-3 p-3 border rounded animate-pulse">
-                          <div className="w-28 h-20 bg-gray-200 rounded" />
-                          <div className="flex-1 space-y-2 py-1">
-                            <div className="h-4 bg-gray-200 rounded w-3/4" />
-                            <div className="h-3 bg-gray-200 rounded w-1/2" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {error && <div className="text-sm text-red-600">{error}</div>}
 
-                  {!loading && error && <div className="text-sm text-red-600">{error}</div>}
-
-                  {!loading && !YT_KEY && (
+                  {!YT_KEY && (
                     <div className="text-sm" style={{ color: ACCENT }}>Set <code>VITE_YT_API_KEY</code> in <code>client/.env</code> to enable YouTube search.</div>
                   )}
 
-                  {!loading && YT_KEY && ytResults.length === 0 && (
+                  {YT_KEY && ytResults.length === 0 && (
                     <div className="text-sm text-gray-500">No videos found — try a different query.</div>
                   )}
 
-                  {!loading && ytResults.length > 0 && (
+                  {ytResults.length > 0 && (
                     <div className="grid gap-4 md:grid-cols-2">
                       {ytResults.map((v) => (
                         <a key={v.id} href={`https://www.youtube.com/watch?v=${v.id}`} target="_blank" rel="noreferrer" className="flex gap-3 p-3 rounded-lg border hover:shadow-md transition bg-white">
@@ -305,7 +331,7 @@ export default function Resources() {
                     </div>
                   )}
 
-                  {!loading && ytResults.length > 0 && YT_KEY && (
+                  {ytResults.length > 0 && YT_KEY && (
                     <div className="mt-3 text-right">
                       <button onClick={() => loadMore("videos")} className="text-sm px-3 py-1 rounded-full text-white" style={{ background: ACCENT }} onMouseOver={(e) => (e.currentTarget.style.background = ACCENT_DARK)} onMouseOut={(e) => (e.currentTarget.style.background = ACCENT)}>Load more videos</button>
                     </div>
@@ -414,3 +440,13 @@ export default function Resources() {
     </div>
   );
 }
+
+// Notify top-level that Resources is ready on mount (no blocking async init)
+try {
+  // Use a microtask so this file's module evaluation doesn't throw in older browsers
+  if (typeof window !== 'undefined') {
+    window.requestAnimationFrame(() => {
+      try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
+    });
+  }
+} catch(e) {}
