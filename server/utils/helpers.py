@@ -33,9 +33,6 @@ except Exception:
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('MODEL_NAME')
 
-# SMTP/notification handling removed from this module.
-# Configure and send notifications via a dedicated notifications service or
-# background worker. This keeps intent detection fast and side-effect free.
 
 # Single, constant prompt used for all model intent classification calls (per your request).
 # The model should return a strict JSON object and nothing else.
@@ -369,7 +366,6 @@ def detect_intent(message: str) -> dict:
     - If local crisis keyword fast-path matches, treat as high danger (immediate safety fast-path).
     - Otherwise, call Gemini once using the UNIFIED_INTENT_PROMPT + message.
     - Parse the JSON and return { intent, confidence, danger_level, metadata }.
-    - If danger_level is 'high', attempt to notify the counsellor via SMTP (if configured).
     """
     out = {'intent': 'unknown', 'confidence': 0.0, 'danger_level': 'low', 'metadata': {}}
     if not message or not isinstance(message, str):
@@ -416,11 +412,11 @@ def detect_intent(message: str) -> dict:
             result['unsafe'] = False
             result['safe'] = True
         # If model marks high danger, mark the result for external escalation.
-        # SMTP-based notifications were removed from this module.
+        
         if result['danger_level'].lower() == 'high':
             md = result.get('metadata') or {}
             md['escalation_required'] = True
-            md['escalation_note'] = 'High danger detected; escalate externally (SMTP removed)'
+            md['escalation_note'] = 'High danger detected; escalate externally'
             result['metadata'] = md
         return result
     except Exception as e:
@@ -463,7 +459,7 @@ def detect_intent(message: str) -> dict:
                     if result['danger_level'].lower() == 'high':
                         md = result.get('metadata') or {}
                         md['escalation_required'] = True
-                        md['escalation_note'] = 'High danger detected; escalate externally (SMTP removed)'
+                        md['escalation_note'] = 'High danger detected; escalate externally'
                         result['metadata'] = md
                     # annotate that recovery succeeded
                     result['metadata'] = result.get('metadata') or {}
