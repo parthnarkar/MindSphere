@@ -353,7 +353,7 @@ const AuthPage = ({ defaultRole } = {}) => {
             </>
           )}
               <div className="mt-3 text-center">
-                <Link to="/" className="text-sm text-[#263238]">Back to home</Link>
+                <Link to="/landing" className="text-sm text-[#263238]">Back to home</Link>
               </div>
         </div>
       </div>

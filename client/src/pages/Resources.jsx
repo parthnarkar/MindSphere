@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { API } from "../hooks/helper";
+import { auth } from "../firebase";
 
 // Small debounce helper
 const debounce = (fn, wait = 350) => {
@@ -61,10 +62,10 @@ export default function Resources() {
   const YT_KEY = import.meta.env.VITE_YT_API_KEY || null;
 
   // Accent colors (primary, darker hover, and light background)
-  const ACCENT = "#263238";
-  const ACCENT_DARK = "#ffffffff"; // hover / stronger shade
-  const ACCENT_LIGHT = "#faf3efff"; // very light background shade
-  const ACCENT_HOVER = "#4b4b4bff"; // hover / stronger shade --- IGNORE ---
+  const ACCENT = "#263238"; // primary accent (dark slate)
+  const ACCENT_DARK = "#1b2b2d"; // slightly darker variant for subtle emphasis
+  const ACCENT_LIGHT = "#faf3ef"; // very light background shade
+  const ACCENT_HOVER = "#374151"; // hover / stronger shade
 
   // Debounced search function with in-memory caching and partial-result rendering
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,7 +79,7 @@ export default function Resources() {
         return;
       }
 
-      const key = `${q.trim().toLowerCase()}|v${ytLimit}|b${bookLimit}`;
+  const key = `${q.trim().toLowerCase()}|v${ytLimit}|b${bookLimit}`;
       // Return cached results immediately if present
       if (cacheRef.current.has(key)) {
         const cached = cacheRef.current.get(key);
@@ -90,6 +91,10 @@ export default function Resources() {
       }
 
   setError(null);
+
+      // NOTE: Recording of searches is intentionally moved to the explicit
+      // user action (form submit / Search button) so we don't save every
+      // partial/debounced query. The submit handler calls `recordSearch`.
 
       // Cancel previous fetches
       if (controllerRef.current) controllerRef.current.abort();
@@ -217,9 +222,38 @@ export default function Resources() {
     }
   }, [query]);
 
+  // Record an explicit, user-initiated search event to the server.
+  // This is called only when the user submits the search (clicks Search or presses Enter).
+  const recordSearch = async (q) => {
+    // Do not record empty queries
+    if (!q || String(q).trim().length === 0) return;
+    try {
+      const base = API;
+      const payload = {
+        email: auth?.currentUser?.email || null,
+        query: q,
+        context: { source: 'resource_finder' },
+      };
+      // fire-and-forget; don't block the UI if recording fails
+      await fetch(`${base.replace(/\/$/, '')}/api/resource-searches`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch (e) {
+      // silently ignore recording errors
+    }
+  };
+
   const onSubmit = (e) => {
     e.preventDefault();
-    // Manual submit triggers immediate search
+    // Manual submit triggers an explicit recording, then an immediate search
+    try {
+      // don't await to keep UX snappy
+      if (query && String(query).trim().length > 0) recordSearch(query);
+    } catch (err) {
+      // ignore
+    }
     doSearch(query);
   };
 
@@ -235,7 +269,7 @@ export default function Resources() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
+    <div className="max-w-6xl mx-auto px-4 py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
   <div className="rounded-3xl shadow-xl overflow-hidden" style={{ background: `linear-gradient(135deg, ${ACCENT_LIGHT}, #FFF8F5)` }}>
           <div className="p-6 sm:p-8">

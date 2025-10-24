@@ -279,101 +279,19 @@ export default function Booking() {
   // Render immediately; counsellor list will populate when data arrives.
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 py-20 booking-root" style={{ backgroundColor: '#ffffffff', color: '#263238' }}>
-  <style>{`
-        html {
-          scroll-behavior: smooth;
-        }
-
-        * {
-          scroll-behavior: smooth;
-        }
-
-        .smooth-scroll {
-          scroll-behavior: smooth;
-          -webkit-overflow-scrolling: touch;
-        }
-
-        .scrollbar-hide {
-          scrollbar-width: none;
-          -ms-overflow-style: none;
-          -webkit-overflow-scrolling: touch;
-        }
-
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-
-        /* Enhanced smooth scrolling for all scrollable elements */
-        .smooth-scroll-enhanced {
-          scroll-behavior: smooth;
-          -webkit-overflow-scrolling: touch;
-          scroll-padding-top: 2rem;
-          scroll-snap-type: y proximity;
-        }
-
-        /* Momentum scrolling for iOS */
-        .momentum-scroll {
-          -webkit-overflow-scrolling: touch;
-          overscroll-behavior: contain;
-        }
-
-        /* Booking page theme overrides (scoped by .booking-root) */
-        .booking-root { color: #263238; background-color: #faf3efff; }
-
-        /* Force commonly used background utility classes to the requested light shade */
-        .booking-root .bg-white,
-        .booking-root .bg-gray-50,
-        .booking-root .bg-blue-50,
-        .booking-root .bg-blue-100,
-        .booking-root .bg-green-50,
-        .booking-root .bg-green-100,
-        .booking-root .bg-yellow-50,
-        .booking-root .bg-gray-100,
-        .booking-root .bg-gray-200 {
-          background-color: #faf3efff !important;
-        }
-
-        /* Force text color to the requested shade for known utility text classes */
-        .booking-root .text-blue-700,
-        .booking-root .text-blue-600,
-        .booking-root .text-blue-800,
-        .booking-root .text-gray-600,
-        .booking-root .text-gray-500,
-        .booking-root .text-gray-700,
-        .booking-root .text-gray-800,
-        .booking-root .text-indigo-600,
-        .booking-root .text-green-700,
-        .booking-root .text-yellow-600,
-        .booking-root .text-indigo-600 {
-          color: #263238 !important;
-        }
-
-        /* Ensure buttons that used strong colors are readable but follow the page palette */
-        .booking-root .bg-blue-600,
-        .booking-root .bg-indigo-600,
-        .booking-root .bg-green-600 {
-          background-color: #faf3efff !important;
-          color: #263238 !important;
-          border: 1px solid rgba(38,50,56,0.08) !important;
-        }
-
-        /* Links and emphasized text should use the main text color */
-        .booking-root a { color: #263238 !important; }
-        .booking-root .font-medium { color: #263238 !important; }
-      `}</style>
-      <h2 className="text-3xl font-extrabold text-center text-blue-700 mb-6">
+    <div className="max-w-6xl mx-auto px-4 py-24" style={{ color: '#263238' }}>
+      <h2 className="text-3xl font-extrabold text-center text-[#263238] mb-6">
         Book a Counsellor
       </h2>
 
-      <p className="text-center text-gray-600 mb-8 max-w-2xl mx-auto">
+      <p className="text-center text-[#53606a] mb-8 max-w-2xl mx-auto">
         Choose from available counsellors below and pick a time that works for you. You can book anonymously if preferred.
       </p>
 
       {/* Counsellor Placards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 mb-12">
         {counsellors.map(c => (
-          <div key={c.id} className="p-5 border rounded-2xl shadow hover:shadow-xl transition flex flex-col items-center bg-white">
+          <div key={c.id} className="p-5 border rounded-2xl shadow hover:shadow-xl transition flex flex-col items-center bg-white/90">
             {c.image ? (
               <img
                 src={c.image}
@@ -393,19 +311,16 @@ export default function Booking() {
               <div>{c.phone}</div>
             </div>
             <button
-              className="mt-4 px-4 py-2 font-medium rounded-full transition disabled:opacity-50 hover:opacity-75 cursor-pointer shadow-sm hover:shadow-md"
+              className="mt-4 px-4 py-2 font-medium rounded-full transition disabled:opacity-50 hover:opacity-75 cursor-pointer shadow-sm hover:shadow-md bg-[#FF8C42] text-white border border-[rgba(38,50,56,0.12)]"
               onClick={() => handleBookClick(c)}
-              disabled={false}
               aria-label={`Book appointment with ${c.name}`}
-              style={{ backgroundColor: '#FF8C42', color: '#faf3efff', border: '1px solid rgba(38,50,56,0.12)' }}
             >
               Book
             </button>
             <button
-              className="mt-3 px-4 py-2 rounded-lg transition cursor-pointer hover:opacity-75 font-medium shadow-sm hover:shadow-md"
+              className="mt-3 px-4 py-2 rounded-lg transition cursor-pointer hover:opacity-75 font-medium shadow-sm hover:shadow-md bg-white text-[#263238] border border-[#263238]"
               onClick={() => handleViewDetails(c.id)}
               aria-label={`View details for ${c.name}`}
-              style={{ backgroundColor: '#faf3efff', color: '#263238', border: '1px solid #263238' }}
             >
               View Details
             </button>
@@ -415,13 +330,8 @@ export default function Booking() {
 
       {/* Details Popup */}
       {showDetailsPopup && counsellorDetails && (
-        <div className="fixed inset-0 bg-opacity-70 backdrop-blur-sm flex items-center justify-center z-50 px-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 sm:p-8 animate-fadeIn overflow-y-auto max-h-[100vh] border-t-8 border-blue-600 relative scrollbar-hide smooth-scroll-enhanced momentum-scroll">
-            <style>{`
-              .scrollbar-hide::-webkit-scrollbar {
-                display: none;
-              }
-            `}</style>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 px-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full p-6 sm:p-8 animate-fadeIn overflow-y-auto max-h-[90vh] border-t-8 border-blue-600 relative">
 
             {/* Header with Image and Name */}
             <div className="flex items-center gap-4 mb-6">
@@ -443,8 +353,8 @@ export default function Booking() {
                 </div>
               </div>
               <div>
-                <h3 className="text-2xl font-bold text-blue-800 mb-1">{counsellorDetails.name}</h3>
-                <p className="text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full text-sm">
+                <h3 className="text-2xl font-bold text-[#263238] mb-1">{counsellorDetails.name}</h3>
+                <p className="text-sm font-medium bg-blue-50 px-3 py-1 rounded-full text-[#263238]">
                   {counsellorDetails.specialization || 'Counselling'}
                 </p>
               </div>
@@ -458,8 +368,8 @@ export default function Booking() {
                     <span className="text-blue-600 font-bold text-sm">📊</span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Experience</p>
-                    <p className="font-semibold text-gray-800">{counsellorDetails.experience} years</p>
+                    <p className="text-sm text-[#53606a]">Experience</p>
+                    <p className="font-semibold text-[#263238]">{counsellorDetails.experience} years</p>
                   </div>
                 </div>
               )}
@@ -470,8 +380,8 @@ export default function Booking() {
                     <span className="text-gray-600 font-bold text-sm">📧</span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Email</p>
-                    <p className="font-medium text-gray-800 break-all">{counsellorDetails.email}</p>
+                    <p className="text-sm text-[#53606a]">Email</p>
+                    <p className="font-medium text-[#263238] break-all">{counsellorDetails.email}</p>
                   </div>
                 </div>
               )}
@@ -482,23 +392,11 @@ export default function Booking() {
                     <span className="text-green-600 font-bold text-sm">📞</span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Phone</p>
-                    <p className="font-medium text-gray-800">{counsellorDetails.phone}</p>
+                    <p className="text-sm text-[#53606a]">Phone</p>
+                    <p className="font-medium text-[#263238]">{counsellorDetails.phone}</p>
                   </div>
                 </div>
               )}
-
-              {/* {counsellorDetails.location && (
-                <div className="flex items-center gap-3 p-3 bg-purple-50 rounded-xl">
-                  <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
-                    <span className="text-purple-600 font-bold text-sm">📍</span>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Location</p>
-                    <p className="font-medium text-gray-800">{counsellorDetails.location}</p>
-                  </div>
-                </div>
-              )} */}
 
               {counsellorDetails.qualifications && (
                 <div className="flex items-start gap-3 p-3 bg-orange-50 rounded-xl">
@@ -506,8 +404,8 @@ export default function Booking() {
                     <span className="text-orange-600 font-bold text-sm">🎓</span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Qualifications</p>
-                    <p className="font-medium text-gray-800">{counsellorDetails.qualifications}</p>
+                    <p className="text-sm text-[#53606a]">Qualifications</p>
+                    <p className="font-medium text-[#263238]">{counsellorDetails.qualifications}</p>
                   </div>
                 </div>
               )}
@@ -518,8 +416,8 @@ export default function Booking() {
                     <span className="text-yellow-600 font-bold text-sm">💰</span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Consultation Fee</p>
-                    <p className="font-medium text-gray-800">₹{counsellorDetails.consultationFee}</p>
+                    <p className="text-sm text-[#53606a]">Consultation Fee</p>
+                    <p className="font-medium text-[#263238]">₹{counsellorDetails.consultationFee}</p>
                   </div>
                 </div>
               )}
@@ -530,16 +428,16 @@ export default function Booking() {
                     <span className="text-teal-600 font-bold text-sm">⏰</span>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Availability</p>
-                    <p className="font-medium text-gray-800">{counsellorDetails.availability}</p>
+                    <p className="text-sm text-[#53606a]">Availability</p>
+                    <p className="font-medium text-[#263238]">{counsellorDetails.availability}</p>
                   </div>
                 </div>
               )}
 
               {counsellorDetails.bio && (
                 <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-xl border border-blue-100">
-                  <p className="text-sm text-gray-600 mb-2">About</p>
-                  <p className="text-gray-700 leading-relaxed">{counsellorDetails.bio}</p>
+                  <p className="text-sm text-[#53606a] mb-2">About</p>
+                  <p className="text-[#263238] leading-relaxed">{counsellorDetails.bio}</p>
                 </div>
               )}
             </div>
@@ -547,12 +445,11 @@ export default function Booking() {
             {/* Action Buttons */}
             <div className="flex gap-3 mt-8">
               <button
-                className="flex-1 px-4 py-3 rounded-xl transition font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] cursor-pointer"
+                className="flex-1 px-4 py-3 rounded-xl transition font-medium shadow-lg hover:shadow-xl transform hover:scale-[1.02] cursor-pointer bg-white text-[#263238] border border-[rgba(38,50,56,0.12)]"
                 onClick={() => {
                   handleCloseDetailsPopup();
                   handleBookClick(counsellorDetails);
                 }}
-                style={{ backgroundColor: '#faf3efff', color: '#263238', border: '1px solid rgba(38,50,56,0.12)' }}
               >
                 Book Now
               </button>
@@ -579,7 +476,7 @@ export default function Booking() {
       {/* Booking Popup */}
       {showPopup && selectedCounsellor && (
         <div className="fixed inset-0 bg-opacity-70 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 px-4 py-6 sm:py-0">
-          <div role="dialog" aria-modal="true" aria-labelledby="book-dialog-title" className="bg-white p-6 rounded-2xl shadow-2xl max-w-xl sm:w-full relative w-full animate-fadeIn smooth-scroll-enhanced momentum-scroll">
+          <div role="dialog" aria-modal="true" aria-labelledby="book-dialog-title" className="bg-white p-6 rounded-2xl shadow-2xl max-w-xl sm:w-full relative w-full animate-fadeIn overflow-y-auto max-h-[80vh] touch-auto">
             <div className="flex items-center gap-3 mb-4">
               {selectedCounsellor.image ? (
                 <img

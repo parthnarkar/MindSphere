@@ -1,7 +1,9 @@
-Flask>=2.3
-flask-cors>=3.0
-google-generativeai
-python-dotenv>=1.0
-pymongo>=4.6
-Flask>=2.3
-flask-cors>=3.0
+# Server requirements for MindSphere
+# Use conservative version ranges to avoid unexpected major-version upgrades
+Flask>=2.3,<3.0
+Flask-Cors>=3.0,<4.0
+google-generativeai>=0.2.0
+python-dotenv>=1.0,<3.0
+pymongo>=4.6,<5.0
+# Optional: dnspython is required when using MongoDB URIs with +srv (mongodb+srv://)
+dnspython>=2.0

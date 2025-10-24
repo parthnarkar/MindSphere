@@ -9,7 +9,6 @@ import AdminDashboard from "./pages/AdminDashboard";
 import PeerToPeer from "./pages/Peer-to-Peer";
 import CounsellorDashboard from "./pages/CounsellorDashboard";
 import Profile from "./pages/Profile";
-import CounsellorProfile from "./pages/CounsellorProfile";
 import { onAuthChange, logoutUser } from "./services/auth";
 import PHQ9Modal from "./components/PHQ9Modal";
 import { API } from "./hooks/helper";
@@ -70,6 +69,16 @@ function App() {
       return;
     }
     if (autoNavRef.current) return;
+    // Only auto-navigate if the user is currently on a generic entry route
+    // (root, landing, or auth). If the user has already navigated to a
+    // specific page (e.g. /peer-to-peer), respect that and do not override it.
+    const currentPath = loc && loc.pathname ? loc.pathname.toLowerCase() : '';
+    const isEntryRoute = currentPath === '/' || currentPath === '/landing' || currentPath === '/auth';
+    if (!isEntryRoute) {
+      // user intentionally navigated to a page -> do not auto-redirect
+      autoNavRef.current = true; // mark handled so we don't re-run
+      return;
+    }
     // navigate according to authoritative role (run only once per login)
     try {
       if (user.role === 'admin') {
@@ -80,7 +89,7 @@ function App() {
         navigate('/chatbot', { replace: true });
       }
       autoNavRef.current = true;
-    } catch (e) {
+    } catch (_) {
       // navigation may fail in tests/SSR — ignore
     }
   }, [user, navigate]);
@@ -127,13 +136,19 @@ function App() {
 
   // Expose small global so layout/header can synchronously style during loading.
   useEffect(() => {
-    try { window.__mindsphere_pageReady = pageReady; } catch (e) { /* ignore */ }
+    try { window.__mindsphere_pageReady = pageReady; } catch (_) { /* ignore */ }
   }, [pageReady]);
 
   const handleLogout = async () => {
-    await logoutUser();
+    try {
+      await logoutUser();
+    } catch (e) {
+      // best-effort logout — continue to clear local state even if remote call fails
+      console.warn('logoutUser failed', e);
+    }
     setUser(null);
-    try { sessionStorage.removeItem('authRole'); } catch(e) { /* ignore */ }
+  try { sessionStorage.removeItem('authRole'); } catch(_) { /* ignore */ }
+  try { navigate('/landing', { replace: true }); } catch (_) { /* ignore navigation errors in tests/SSR */ }
   };
 
   if (loading && !initialAuthChecked) {
@@ -172,27 +187,7 @@ function App() {
         <Routes>
       <Route path="/landing" element={<LandingPage />} />
             {/* Login / Redirect */}
-        <Route
-          path="/"
-          element={
-                // For routing use only the authoritative `displayUser` (the `user` object).
-                // If not present, show the auth page. We avoid using sessionStorage for routing
-                // to prevent an incorrect role-based redirect before auth settles.
-                !displayUser ? (
-                  <AuthPage />
-                ) : // If logged in but not signed up, show signup completion UI
-                !displayUser.signedUp ? (
-                  <AuthPage />
-                ) : // signed-up: route by role
-                displayUser.role === "admin" ? (
-                  <Navigate to="/admin-dashboard" />
-                ) : displayUser.role === "counsellor" ? (
-                  <Navigate to="/CounsellorDashboard" />
-                ) : (
-                  <Navigate to="/chatbot" />
-                )
-          }
-        />
+        <Route path="/" element={<Navigate to="/landing" replace />} />
         <Route path="/auth" element={<AuthPage />} />
   {/* admin-login now uses the unified AuthPage with defaultRole='admin' */}
   {/* /admin-login removed - unified auth route at '/' handles all roles */}
@@ -283,7 +278,7 @@ function App() {
           path="/CounsellorProfile"
           element={
             <CounsellorRoute user={displayUser}>
-              <CounsellorProfile />
+              <CounsellorDashboard />
             </CounsellorRoute>
           }
         />
@@ -329,22 +324,7 @@ function App() {
           <Routes>
             <Route path="/landing" element={<LandingPage />} />
             {/* Login / Redirect */}
-            <Route
-              path="/"
-              element={
-                !displayUser ? (
-                  <AuthPage />
-                ) : !displayUser.signedUp ? (
-                  <AuthPage />
-                ) : displayUser.role === "admin" ? (
-                  <Navigate to="/admin-dashboard" />
-                ) : displayUser.role === "counsellor" ? (
-                  <Navigate to="/CounsellorDashboard" />
-                ) : (
-                  <Navigate to="/chatbot" />
-                )
-              }
-            />
+            <Route path="/" element={<Navigate to="/landing" replace />} />
             <Route path="/auth" element={<AuthPage />} />
 
             {/* Protected Pages */}
@@ -423,7 +403,7 @@ function App() {
               path="/CounsellorProfile"
               element={
                 <CounsellorRoute user={displayUser}>
-                  <CounsellorProfile />
+                  <CounsellorDashboard />
                 </CounsellorRoute>
               }
             />
@@ -438,7 +418,7 @@ function App() {
                     : displayUser.role === 'counsellor'
                       ? <Navigate to="/CounsellorDashboard" />
                       : <Navigate to="/chatbot" />
-                  : <Navigate to="/" />
+                  : <Navigate to="/landing" />
               }
             />
           </Routes>

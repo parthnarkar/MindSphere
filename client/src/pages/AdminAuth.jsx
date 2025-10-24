@@ -142,10 +142,6 @@ const AdminAuthPage = () => {
 
             <button type="submit" className="w-full py-3 bg-[#FF8C42] text-white rounded-lg font-semibold shadow-sm hover:bg-[#e6732f] focus:outline-none focus:ring-4 focus:ring-[#FF8C42]/30 transition cursor-pointer text-lg">{isLogin ? 'Sign in' : 'Create admin account'}</button>
           </form>
-
-          <div className="mt-6 text-center text-sm text-cc-text-muted">
-            <a href="/" className="text-[#FF8C42] underline">← Back to regular login</a>
-          </div>
         </div>
       </div>
     </div>

@@ -164,8 +164,8 @@ export default function Profile() {
     );
 
   return (
-    <div className="min-h-screen p-6" style={{ backgroundColor: "#FAF3EF" }}>
-      <div className="max-w-3xl mx-auto">
+    <div className="max-w-6xl mx-auto px-4 py-24">
+      <div className="max-w-3xl mx-auto rounded-2xl" style={{ backgroundColor: "#FAF3EF" }}>
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
@@ -189,7 +189,7 @@ export default function Profile() {
         {errors.general && <p className="text-red-500 mb-4">{errors.general}</p>}
 
         {/* Profile Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 transition-transform">
+        <div className="bg-white p-8 rounded-b-2xl transition-transform">
           {isEditing ? (
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

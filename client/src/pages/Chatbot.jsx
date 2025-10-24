@@ -500,9 +500,9 @@ export default function Chatbot({ user }) {
   }
 
   return (
-    <div className="max-w-6xl mx-auto px-4 sm:px-6 p-13">
+    <div className="max-w-6xl mx-auto px-4 py-24">
       <div className="relative rounded-2xl shadow-xl overflow-hidden bg-white/70 backdrop-blur-sm border border-gray-200">
-        <div className="px-6 py-4 border-b flex items-center justify-between gap-4">
+        <div className="px-6 py-4 border-b flex items-center justify-between gap-4 flex-col md:flex-row">
           <div>
             <h2 className="text-2xl md:text-3xl font-semibold text-[#263238]">
               Support Chat
@@ -512,9 +512,9 @@ export default function Chatbot({ user }) {
               history is saved per session.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full">
             <button
-              className={`${btnNeutral} flex items-center gap-1 justify-center`}
+              className={`${btnNeutral} flex items-center gap-1 justify-center w-[50%]`}
               onClick={() => {
                 setShowModal(true);
                 fetch(`${API}/api/chat/session${sessionsQuery}`)
@@ -531,7 +531,7 @@ export default function Chatbot({ user }) {
             </button>
 
             <button
-              className={`${btnNeutral} flex items-center gap-1 justify-center`}
+              className={`${btnNeutral} flex items-center gap-1 justify-center w-[50%]`}
               onClick={createSession}
               title="Create new session"
             >
