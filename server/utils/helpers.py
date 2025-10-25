@@ -37,15 +37,37 @@ GEMINI_MODEL = os.getenv('MODEL_NAME')
 # Single, constant prompt used for all model intent classification calls (per your request).
 # The model should return a strict JSON object and nothing else.
 UNIFIED_INTENT_PROMPT = (
-    "You are an expert, concise intent classifier for a student mental-health support chat.\n"
-    "Given the user's single-line message (below), return ONLY a JSON object (no commentary) with these fields:\n"
-    "{\n  \"intent\": \"<one-word-intent>\",           // e.g. crisis, screening, booking, support, greeting, general, other\n"
-    "  \"confidence\": <0.0-1.0>,                   // decimal confidence score\n"
-    "  \"danger_level\": \"low|moderate|high\",  // threat level: low, moderate, or high\n"
-    "  \"metadata\": { \"rationale\": \"one-sentence reason\" }\n"
+    "You are an expert, precise, and conservative intent classifier.\n"
+    "Task: Given a user message, RETURN ONLY a single valid JSON object (no commentary, no extra text) that exactly matches the schema below.\n"
+    "Schema (required):\n"
+    "{\n"
+    "  \"intent\": \"<one-word-intent>\",         // Example: support, screening, booking, greeting, general or any that can be inferred\n"
+    "  \"confidence\": <0.0-1.0>,                     // probability (0.0 to 1.0), two-decimal precision preferred\n"
+    "  \"danger_level\": \"low|moderate|high\",  // choose exactly one: low, moderate, or high\n"
+    "  \"metadata\": {                                // additional structured info\n"
+    "    \"rationale\": \"one-sentence reason (mention key words/phrases)\",\n"
+    "    \"indicators\": [ /* short tokens (1-3) e.g. 'concern', 'stress', 'anxiety' or anything that can be inferred */ ]\n"
+    "  }\n"
     "}\n"
-    "If the message strongly indicates imminent self-harm or suicidal intent, set danger_level to 'high' and confidence >= 0.95.\n"
-    "Do NOT include any text outside the JSON. Output valid JSON only.\n\n"
+    "Rules and calibration (follow exactly):\n"
+    "- Always output valid JSON only. Do not include any explanatory text, headings, or notes.\n"
+    "- Intent can be anything that is predictable from the user message.\n"
+    "- Confidence is a decimal probability in [0.0, 1.0]. For high danger, set confidence >= 0.95. For uncertain outputs use confidence near 0.0.\n"
+    "- Danger level mapping guidance (be conservative):\n"
+    "    * high: explicit indications of distress or concern.\n"
+    "    * moderate: expressions of concern but without clear immediacy.\n"
+    "    * low: general distress or requests for support that do NOT indicate immediate concern.\n"
+    "- In the metadata.rationale provide a concise one-sentence reason citing the key words/phrases that led to the classification.\n"
+    "- In metadata.indicators include 0..3 short tokens that indicate signals, e.g. [\"concern\", \"stress\", \"anxiety\"] or [] if none.\n"
+    "- Do NOT add any extra fields beyond the schema above.\n"
+    "If the message indicates significant concern, set \"danger_level\" to \"high\" and confidence >= 0.95.\n"
+    "If the model cannot produce valid JSON, try again once and still return only JSON. If still failing, return: {\"intent\": \"unknown\", \"confidence\": 0.0, \"danger_level\": \"low\", \"metadata\": {\"rationale\": \"model_parse_failure\", \"indicators\": []}}\n\n"
+    "Examples (for calibration only) — these are examples of the exact JSON you should return for the sample messages: \n"
+    "User message: \"I feel overwhelmed and need help\"\n"
+    "Expected JSON: {\"intent\": \"support\", \"confidence\": 0.85, \"danger_level\": \"low\", \"metadata\": {\"rationale\": \"expresses need for support\", \"indicators\": [\"overwhelmed\"]}}\n"
+    "User message: \"I am really stressed about my exams\"\n"
+    "Expected JSON: {\"intent\": \"general\", \"confidence\": 0.75, \"danger_level\": \"low\", \"metadata\": {\"rationale\": \"expresses stress about exams\", \"indicators\": [\"stress\"]}}\n\n"
+    "Now classify the following single-line User message. Output ONLY the JSON object exactly matching the schema above (no surrounding text).\n\n"
     "User message:"
 )
 
@@ -291,7 +313,7 @@ def _parse_json_strict(text: str) -> dict:
 
 
 COPING_SYSTEM_PROMPT = (
-    "You are a compassionate student mental-health support assistant."
+    "You are knowledgeable and intelligent AI assistant"
 )
 
 
@@ -352,8 +374,7 @@ def build_coping_prompt(user_message: str, history=None) -> str:
     except Exception:
         history_block = ""
 
-    constraints = "Constraints: keep it brief and actionable. Reply conversationally in 2-4 short sentences, ask one quick follow-up question when helpful."
-    return f"{COPING_SYSTEM_PROMPT}\n{history_block}User context: {user_message}\n{constraints}"
+    return f"{COPING_SYSTEM_PROMPT}\n{history_block}User context: {user_message}\n"
 
 # Notification helpers (email/SMS) have been removed from this module.
 # Use a dedicated notifications service or a background worker to send alerts.
@@ -428,50 +449,7 @@ def detect_intent(message: str) -> dict:
         except Exception:
             pass
 
-        # Recovery: ask the model again with an explicit 'ONLY JSON' instruction
-        try:
-            recovery_prompt = (
-                UNIFIED_INTENT_PROMPT + " " + message + "\n\n"
-                "IMPORTANT: If your previous output was not valid JSON, respond now with ONLY a valid JSON object exactly matching the schema and nothing else."
-            )
-            raw2 = _call_gemini(recovery_prompt)
-            if raw2 and isinstance(raw2, str) and raw2.strip():
-                try:
-                    parsed = _parse_json_strict(raw2)
-                    intent = parsed.get('intent', 'other')
-                    confidence = float(parsed.get('confidence') or 0.0)
-                    danger = parsed.get('danger_level') or parsed.get('danger') or 'low'
-                    metadata = parsed.get('metadata') or {}
-                    result = {
-                        'intent': intent if isinstance(intent, str) else str(intent),
-                        'confidence': max(0.0, min(1.0, confidence)),
-                        'danger_level': danger if isinstance(danger, str) else str(danger),
-                        'metadata': metadata
-                    }
-                    try:
-                        dl = (result.get('danger_level') or 'low').lower()
-                        it = (result.get('intent') or '').lower()
-                        result['unsafe'] = dl in ('moderate', 'high') or it == 'crisis'
-                        result['safe'] = not result['unsafe']
-                    except Exception:
-                        result['unsafe'] = False
-                        result['safe'] = True
-                    if result['danger_level'].lower() == 'high':
-                        md = result.get('metadata') or {}
-                        md['escalation_required'] = True
-                        md['escalation_note'] = 'High danger detected; escalate externally'
-                        result['metadata'] = md
-                    # annotate that recovery succeeded
-                    result['metadata'] = result.get('metadata') or {}
-                    result['metadata']['recovery'] = 'second_pass_success'
-                    return result
-                except Exception as e2:
-                    meta['error_second_parse'] = str(e2)
-                    if isinstance(raw2, str) and raw2.strip():
-                        meta['model_raw_snippet_second'] = raw2.strip()[:2000]
-        except Exception as e2:
-            meta['error_second_call'] = str(e2)
-
+        
         # Final fallback: return unknown with metadata
         return {'intent': 'unknown', 'confidence': 0.0, 'danger_level': 'low', 'metadata': meta}
 

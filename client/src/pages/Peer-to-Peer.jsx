@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { API } from "../hooks/helper";
-import { auth } from "../firebase";
+import { auth } from "../services/firebase";
 
 const ACCENT = "#263238";
 
@@ -8,6 +8,16 @@ function formatDate(ts) {
   try {
     const d = ts ? new Date(ts) : new Date();
     return d.toLocaleString();
+  } catch (e) {
+    return "Unknown";
+  }
+}
+
+// Return date-only (no time) in a locale-friendly format
+function formatDateOnly(ts) {
+  try {
+    const d = ts ? new Date(ts) : new Date();
+    return d.toLocaleDateString();
   } catch (e) {
     return "Unknown";
   }
@@ -46,16 +56,8 @@ const PeerToPeer = () => {
         // normalize to array
         const arr = Array.isArray(data) ? data : data.posts || [];
         if (mounted) {
-          // sort newest first by timestamp/createdAt
-          arr.sort((a, b) => {
-            const at = new Date(
-              a.createdAt || a.timestamp || a.date || 0
-            ).getTime();
-            const bt = new Date(
-              b.createdAt || b.timestamp || b.date || 0
-            ).getTime();
-            return bt - at;
-          });
+          // Preserve server/database ordering. Do not re-sort here so the
+          // server can control ordering (e.g., newest-first or custom).
           setPosts(arr);
         }
       } catch (e) {
@@ -352,148 +354,95 @@ const PeerToPeer = () => {
           </div>
         </form>
 
-        <div>
-          <div className="flex items-center gap-2 py-2 my-2 justify-between">
+        <section className="bg-gray-50 rounded-lg p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-4 mb-4">
             <h2 className="text-lg font-semibold">Public Posts</h2>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setFilterMode("all")}
-                className={`text-sm px-3 py-1 rounded-full ${
-                  filterMode === "all"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border text-gray-700"
-                }`}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setFilterMode("mine")}
-                className={`text-sm px-3 py-1 rounded-full ${
-                  filterMode === "mine"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border text-gray-700"
-                }`}
-              >
-                My posts
-              </button>
+            <div className="flex items-center gap-2">
+              <div className="inline-flex items-center bg-white rounded-full p-1 border">
+                <button
+                  type="button"
+                  onClick={() => setFilterMode("all")}
+                  className={`text-sm px-3 py-1 rounded-full ${
+                    filterMode === "all"
+                      ? "bg-blue-600 text-white"
+                      : "bg-transparent text-gray-700"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFilterMode("mine")}
+                  className={`text-sm px-3 py-1 rounded-full ${
+                    filterMode === "mine"
+                      ? "bg-blue-600 text-white"
+                      : "bg-transparent text-gray-700"
+                  }`}
+                >
+                  My posts
+                </button>
+              </div>
             </div>
           </div>
-          {loading && (
-            <div className="flex items-center gap-2 py-2">
-              <div
-                className="w-5 h-5 border-2 border-gray-200 rounded-full animate-spin"
-                style={{ borderTopColor: ACCENT }}
-                aria-hidden="true"
-              />
-              <div className="text-sm text-gray-500">Loading posts...</div>
+
+          {/* Loading / error / empty states */}
+          {loading ? (
+            <div className="flex items-center gap-3 py-2 text-sm text-gray-600">
+              <div className="w-5 h-5 border-2 border-gray-200 rounded-full animate-spin" style={{ borderTopColor: ACCENT }} aria-hidden="true" />
+              <div>Loading posts...</div>
             </div>
-          )}
-          {error && <div className="text-sm text-red-500 mb-3">{error}</div>}
-          {!loading && posts.length === 0 && (
-            <div className="text-sm text-gray-500">
-              No posts yet — be the first to share.
-            </div>
-          )}
-          {!loading && (
-            <div className="space-y-4">
+          ) : error ? (
+            <div className="text-sm text-red-500 mb-3">{error}</div>
+          ) : posts.length === 0 ? (
+            <div className="text-sm text-gray-500">No posts yet — be the first to share.</div>
+          ) : (
+            <div className="space-y-4 max-h-[60vh] md:max-h-[60vh] overflow-y-auto pr-2">
               {(filterMode === "all"
                 ? posts
-                : posts.filter(
-                    (pp) =>
-                      String(pp.email || "").toLowerCase() ===
-                      String(auth?.currentUser?.email || "").toLowerCase()
-                  )
+                : posts.filter((pp) => String(pp.email || "").toLowerCase() === String(auth?.currentUser?.email || "").toLowerCase())
               ).map((p) => {
-              const id = p.id || p._id || `${p.email}-${p.createdAt}`;
-              const isExpanded = !!expanded[id];
-              const likedBy = Array.isArray(p.liked_by) ? p.liked_by : (Array.isArray(p.likedBy) ? p.likedBy : []);
-              const likeCount = (p.likes_count != null) ? p.likes_count : (Array.isArray(likedBy) ? likedBy.length : 0);
-              const userEmail = auth?.currentUser?.email || '';
-              const liked = userEmail ? likedBy.some((e) => String(e || '').toLowerCase() === String(userEmail).toLowerCase()) : false;
-              // Normalize possible object fields to safe strings to avoid rendering objects directly
-              const titleText =
-                typeof p.title === "string"
-                  ? p.title
-                  : (p.title && (p.title.title || p.title.name)) ||
-                    "(Untitled)";
-              const authorDisplay =
-                typeof p.author === "string"
-                  ? p.author
-                  : (p.author &&
-                      (p.author.name || p.author.email || p.author.role)) ||
-                    p.email ||
-                    "Anonymous";
-              const isOwner =
-                String(p.email || "").toLowerCase() ===
-                String(auth?.currentUser?.email || "").toLowerCase();
-              const contentText =
-                typeof p.content === "string"
-                  ? p.content
-                  : (p.content && (p.content.text || String(p.content))) || "";
-              return (
-                <article key={id} className="bg-white border rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3">
-                        <div className="font-medium text-gray-800 truncate">
-                          {titleText}
+                const id = p.id || p._id || `${p.email}-${p.createdAt}`;
+                const isExpanded = !!expanded[id];
+                const likedBy = Array.isArray(p.liked_by) ? p.liked_by : (Array.isArray(p.likedBy) ? p.likedBy : []);
+                const likeCount = (p.likes_count != null) ? p.likes_count : (Array.isArray(likedBy) ? likedBy.length : 0);
+                const userEmail = auth?.currentUser?.email || '';
+                const liked = userEmail ? likedBy.some((e) => String(e || '').toLowerCase() === String(userEmail).toLowerCase()) : false;
+                const titleText = typeof p.title === "string" ? p.title : (p.title && (p.title.title || p.title.name)) || "(Untitled)";
+                const authorDisplay = typeof p.author === "string" ? p.author : (p.author && (p.author.name || p.author.email || p.author.role)) || p.email || "Anonymous";
+                const isOwner = String(p.email || "").toLowerCase() === String(auth?.currentUser?.email || "").toLowerCase();
+                const contentText = typeof p.content === "string" ? p.content : (p.content && (p.content.text || String(p.content))) || "";
+
+                return (
+                  <article key={id} className="bg-white border rounded-lg p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3">
+                          <div className="font-medium text-gray-800 truncate">{titleText}</div>
+                          <div className="text-xs text-gray-500">by {authorDisplay}</div>
                         </div>
-                        <div className="text-xs text-gray-500">
-                          by {authorDisplay}
-                        </div>
+              <div className="text-xs text-gray-500 mt-1">{formatDateOnly(p.createdAt || p.timestamp || p.date)}</div>
+                        <div className="mt-3 text-sm text-gray-700 whitespace-pre-wrap">{isExpanded ? contentText : (contentText && contentText.length > 280 ? contentText.slice(0, 280) + "..." : contentText)}</div>
                       </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        {formatDate(p.createdAt || p.timestamp || p.date)}
-                      </div>
-                      <div className="mt-3 text-sm text-gray-700 whitespace-pre-wrap">
-                        {isExpanded
-                          ? contentText
-                          : contentText && contentText.length > 280
-                          ? contentText.slice(0, 280) + "..."
-                          : contentText}
+                      <div className="flex items-start gap-2">
+                        <button type="button" onClick={() => likePost(p)} className={`text-sm px-2 py-1 rounded ${liked ? 'bg-pink-100 text-pink-700' : 'bg-white border text-gray-700'}`}>
+                          {liked ? '♥' : '♡'} {likeCount || 0}
+                        </button>
+                        {filterMode === 'mine' && isOwner && (
+                          <button type="button" onClick={() => deletePost(p)} className="text-sm text-red-600 bg-red-50 border border-red-100 px-2 py-1 rounded">Delete</button>
+                        )}
                       </div>
                     </div>
-                    <div className="flex items-start gap-2">
-                      <button
-                        type="button"
-                        onClick={() => likePost(p)}
-                        className={`text-sm px-2 py-1 rounded ${liked ? 'bg-pink-100 text-pink-700' : 'bg-white border text-gray-700'}`}
-                      >
-                        {liked ? '♥' : '♡'} {likeCount || 0}
-                      </button>
-                      {filterMode === 'mine' && isOwner && (
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => deletePost(p)}
-                            className="text-sm text-red-600 bg-red-50 border border-red-100 px-2 py-1 rounded"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  {contentText && contentText.length > 280 && (
-                    <div className="mt-3 text-right">
-                      <button
-                        className="text-sm text-blue-600"
-                        onClick={() =>
-                          setExpanded((s) => ({ ...s, [id]: !s[id] }))
-                        }
-                      >
-                        {isExpanded ? "Show less" : "Read more"}
-                      </button>
-                    </div>
-                  )}
-                </article>
-              );
+                    {contentText && contentText.length > 280 && (
+                      <div className="mt-3 text-right">
+                        <button className="text-sm text-blue-600" onClick={() => setExpanded((s) => ({ ...s, [id]: !s[id] }))}>{isExpanded ? "Show less" : "Read more"}</button>
+                      </div>
+                    )}
+                  </article>
+                );
               })}
             </div>
           )}
-        </div>
+        </section>
       </div>
     </div>
   );

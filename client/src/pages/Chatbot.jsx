@@ -135,10 +135,32 @@ export default function Chatbot({ user }) {
     setActiveSession(null);
     fetch(`${API}/api/chat/session${sessionsQuery}`)
       .then((r) => r.json())
-      .then((data) => {
+      .then(async (data) => {
         const sess = data.sessions || [];
         setSessions(sess);
-        // If we had an active session and it still exists, restore it.
+
+        // If we have a signed-in user, try to restore the last-active session
+        // persisted server-side. This avoids relying on localStorage and ensures
+        // the user's active session survives page reloads.
+        if (email) {
+          try {
+            const resp = await fetch(
+              `${API}/api/chat/session/active?email=${encodeURIComponent(email)}`
+            );
+            const activeData = await resp.json();
+            if (activeData && activeData.session_id) {
+              const found = sess.find((s) => s.id === activeData.session_id);
+              if (found) {
+                setActiveSession(activeData.session_id);
+                return;
+              }
+            }
+          } catch (e) {
+            // ignore server errors and fall back to default logic
+          }
+        }
+
+        // Fallback: restore previous active if still present, else pick most recent
         const stillThere = sess.find((s) => s.id === prevActive);
         if (stillThere) {
           setActiveSession(prevActive);
@@ -259,6 +281,14 @@ export default function Chatbot({ user }) {
           // mark just-created so the activeSession effect won't clobber UI messages
           justCreatedSessionRef.current = data.session_id;
           setActiveSession(data.session_id);
+          // Persist chosen active session to server so it survives reloads for this user
+          if (email) {
+            fetch(`${API}/api/chat/session/active`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_email: email, session_id: data.session_id }),
+            }).catch(() => {});
+          }
           // Use a hardcoded opener for the first message (do not call server /api/chat/init)
           const opener =
             "Hi — I'm a supportive assistant. How can I help today?";
@@ -350,8 +380,22 @@ export default function Chatbot({ user }) {
         // If the deleted session was active, switch to the next available session
         if (sess.length > 0) {
           setActiveSession(sess[0].id);
+          if (email) {
+            fetch(`${API}/api/chat/session/active`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_email: email, session_id: sess[0].id }),
+            }).catch(() => {});
+          }
         } else {
           setActiveSession(null);
+          if (email) {
+            fetch(`${API}/api/chat/session/active`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ user_email: email, session_id: null }),
+            }).catch(() => {});
+          }
         }
       }
     } catch (e) {
@@ -359,7 +403,15 @@ export default function Chatbot({ user }) {
       setSessions((s) => s.filter((x) => x.id !== id));
       if (activeSession === id) {
         const remaining = sessions.filter((x) => x.id !== id);
-        setActiveSession(remaining.length ? remaining[0].id : null);
+        const newAct = remaining.length ? remaining[0].id : null;
+        setActiveSession(newAct);
+        if (email) {
+          fetch(`${API}/api/chat/session/active`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ user_email: email, session_id: newAct }),
+          }).catch(() => {});
+        }
       }
     }
   }
@@ -487,6 +539,13 @@ export default function Chatbot({ user }) {
 
   function openSession(sessionId) {
     setActiveSession(sessionId);
+    if (email) {
+      fetch(`${API}/api/chat/session/active`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_email: email, session_id: sessionId }),
+      }).catch(() => {});
+    }
     setShowModal(false);
     // messages will load via effect
   }
@@ -665,6 +724,7 @@ export function ChatbotModal({
   onClose,
   onOpen,
   onDelete,
+  onCreate,
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">

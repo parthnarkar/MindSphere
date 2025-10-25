@@ -165,7 +165,7 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
           {((user && user.role) || fallbackRole) ? (
             // Authenticated or optimistic role: always show nav/profile to avoid disappearing links
             <>
-              <nav className="hidden md:flex items-center gap-2 whitespace-nowrap md:overflow-visible overflow-x-auto pr-4">
+              <nav className="hidden md:flex items-center gap-2 whitespace-nowrap md:overflow-visible overflow-x-auto">
                 {((user && user.role) || fallbackRole) === "admin"
                   ? adminNav
                   : ((user && user.role) || fallbackRole) === "counsellor"

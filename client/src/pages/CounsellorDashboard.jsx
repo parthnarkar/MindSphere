@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import userIcon from "/councellor.png";
-import { db, auth } from "../firebase";
+import { db, auth } from "../services/firebase";
 import {
   collection,
   query,
@@ -10,7 +10,7 @@ import {
   getDoc,
   setDoc,
 } from "firebase/firestore";
-import LogoLoader from "../components/LogoLoader";
+// Page-level full-screen loader removed; App.jsx provides the universal full-page loader.
 import { API } from "../hooks/helper";
 
 const CounsellorDashboard = () => {
@@ -115,7 +115,11 @@ const CounsellorDashboard = () => {
     if (!ms) return "Unknown";
     try {
       const d = new Date(ms);
-      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+      return d.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
     } catch (e) {
       return "Unknown";
     }
@@ -205,10 +209,13 @@ const CounsellorDashboard = () => {
       setResourceSearches(d.resourceSearches || []);
       // Log resource searches for debugging / counsellor visibility
       try {
-        console.log("[CounsellorDashboard] resourceSearches:", d.resourceSearches || []);
+        console.log(
+          "[CounsellorDashboard] resourceSearches:",
+          d.resourceSearches || []
+        );
       } catch (err) {}
       setUserChatHistory(d.chatMsgs || []);
-        // setUserPosts(d.posts || []);
+      // setUserPosts(d.posts || []);
       setDetailsLoading(false);
     };
     window.addEventListener("mindsphere:detailsLoaded", handler);
@@ -339,6 +346,14 @@ const CounsellorDashboard = () => {
 
       // Save to Firestore
       const docRef = doc(db, "counsellors", auth.currentUser.uid);
+      // Diagnostic: log UID and keys being written to help debug permissions
+      try {
+        console.log("[CounsellorDashboard] Saving profile", {
+          uid: auth.currentUser?.uid,
+          docPath: `counsellors/${auth.currentUser?.uid}`,
+          keys: Object.keys(profileData || {}),
+        });
+      } catch (e) {}
       await setDoc(docRef, profileData, { merge: true });
 
       // Update local state
@@ -634,16 +649,14 @@ const CounsellorDashboard = () => {
     );
   }
 
-  // Show loading state while fetching profile
+  // Show a compact inline loading placeholder while fetching profile (no full-page loader)
   if (profileLoadingState) {
     return (
-      <div className="min-h-screen bg-gray-50 p-6 flex items-center justify-center">
-        <LogoLoader
-          active={true}
-          minDuration={2000}
-          size={96}
-          text={"Loading your profile..."}
-        />
+      <div className="py-12 flex items-center justify-center">
+        <svg className="animate-spin h-10 w-10 text-gray-600" viewBox="0 0 24 24" aria-hidden="true">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+        </svg>
       </div>
     );
   }
@@ -944,7 +957,35 @@ const CounsellorDashboard = () => {
                             <button
                               type="button"
                               onClick={async () => {
-                                // Accept appointment: update Firestore and notify server to persist in MongoDB
+                                // Accept appointment: ensure signed-in counsellor and then update Firestore
+                                if (!auth || !auth.currentUser) {
+                                  alert(
+                                    "You must be signed in to accept appointments."
+                                  );
+                                  return;
+                                }
+                                // log diagnostic info to help debug permission issues
+                                const currentUid = auth.currentUser.uid;
+                                try {
+                                  console.log(
+                                    "[CounsellorDashboard] Accept click",
+                                    {
+                                      apptId: appt.id,
+                                      apptCounsellorId: appt.counsellorId,
+                                      currentUid,
+                                    }
+                                  );
+                                } catch (e) {}
+                                // ensure the current user is the assigned counsellor for this appointment
+                                if (
+                                  appt.counsellorId &&
+                                  appt.counsellorId !== currentUid
+                                ) {
+                                  alert(
+                                    "You are not authorized to modify this appointment."
+                                  );
+                                  return;
+                                }
                                 try {
                                   const docRef = doc(
                                     db,
@@ -964,18 +1005,22 @@ const CounsellorDashboard = () => {
                                         : a
                                     )
                                   );
-                                  // notify backend
+
+                                  // notify backend and include ID token for server-side verification
                                   try {
+                                    const idToken =
+                                      await auth.currentUser.getIdToken();
                                     await fetch(
                                       `${BACKEND}/api/appointments/${appt.id}/status`,
                                       {
                                         method: "POST",
                                         headers: {
                                           "Content-Type": "application/json",
+                                          Authorization: `Bearer ${idToken}`,
                                         },
                                         body: JSON.stringify({
                                           status: "accepted",
-                                          counsellorId: auth.currentUser.uid,
+                                          counsellorId: currentUid,
                                           email: appt.email,
                                         }),
                                       }
@@ -989,9 +1034,17 @@ const CounsellorDashboard = () => {
                                 } catch (e) {
                                   console.error(
                                     "Failed to accept appointment",
-                                    e
+                                    e?.code || e?.message || e
                                   );
-                                  alert("Failed to accept appointment");
+                                  if (e?.code === "permission-denied") {
+                                    alert(
+                                      "Permission denied: your account does not have permission to accept this appointment. Please ensure you're signed in with the correct counsellor account."
+                                    );
+                                  } else {
+                                    alert(
+                                      "Failed to accept appointment. See console for details."
+                                    );
+                                  }
                                 }
                               }}
                               className="px-4 py-2 rounded bg-green-50 text-green-700 text-sm sm:text-base hover:bg-green-100 w-full sm:w-auto text-center"
@@ -1001,7 +1054,33 @@ const CounsellorDashboard = () => {
                             <button
                               type="button"
                               onClick={async () => {
-                                // Reject appointment
+                                // Reject appointment: ensure signed-in counsellor and then update Firestore
+                                if (!auth || !auth.currentUser) {
+                                  alert(
+                                    "You must be signed in to reject appointments."
+                                  );
+                                  return;
+                                }
+                                const currentUid = auth.currentUser.uid;
+                                try {
+                                  console.log(
+                                    "[CounsellorDashboard] Reject click",
+                                    {
+                                      apptId: appt.id,
+                                      apptCounsellorId: appt.counsellorId,
+                                      currentUid,
+                                    }
+                                  );
+                                } catch (e) {}
+                                if (
+                                  appt.counsellorId &&
+                                  appt.counsellorId !== currentUid
+                                ) {
+                                  alert(
+                                    "You are not authorized to modify this appointment."
+                                  );
+                                  return;
+                                }
                                 try {
                                   const docRef = doc(
                                     db,
@@ -1020,17 +1099,22 @@ const CounsellorDashboard = () => {
                                         : a
                                     )
                                   );
+
+                                  // notify backend with ID token
                                   try {
+                                    const idToken =
+                                      await auth.currentUser.getIdToken();
                                     await fetch(
                                       `${BACKEND}/api/appointments/${appt.id}/status`,
                                       {
                                         method: "POST",
                                         headers: {
                                           "Content-Type": "application/json",
+                                          Authorization: `Bearer ${idToken}`,
                                         },
                                         body: JSON.stringify({
                                           status: "rejected",
-                                          counsellorId: auth.currentUser.uid,
+                                          counsellorId: currentUid,
                                           email: appt.email,
                                         }),
                                       }
@@ -1044,9 +1128,17 @@ const CounsellorDashboard = () => {
                                 } catch (e) {
                                   console.error(
                                     "Failed to reject appointment",
-                                    e
+                                    e?.code || e?.message || e
                                   );
-                                  alert("Failed to reject appointment");
+                                  if (e?.code === "permission-denied") {
+                                    alert(
+                                      "Permission denied: your account does not have permission to reject this appointment."
+                                    );
+                                  } else {
+                                    alert(
+                                      "Failed to reject appointment. See console for details."
+                                    );
+                                  }
                                 }
                               }}
                               className="px-4 py-2 rounded bg-red-50 text-red-700 text-sm sm:text-base hover:bg-red-100 w-full sm:w-auto text-center"
@@ -1383,30 +1475,61 @@ const CounsellorDashboard = () => {
                     <p className="text-sm text-gray-500">Loading...</p>
                   ) : resourceSearches && resourceSearches.length > 0 ? (
                     <div className="space-y-2">
-                      {(
-                        (resourceSearches || [])
-                          .slice()
-                          .sort((a, b) => {
-                            const aTs = parseToMs(a.timestamp || a.createdAt || a.created_at || a.time || a.date);
-                            const bTs = parseToMs(b.timestamp || b.createdAt || b.created_at || b.time || b.date);
-                            return (bTs || 0) - (aTs || 0); // newest first
-                          })
-                          .map((r, idx) => {
-                            const q = r.query || r.search_query || r.term || r.queryText || r.text || "(search)";
-                            const ts = r.timestamp || r.createdAt || r.created_at || r.time || r.date || null;
-                            return (
-                              <div key={r.id || idx} className="bg-gray-50 border rounded-lg p-3">
-                                <div className="flex items-center justify-between mb-1">
-                                  <div className="text-sm text-gray-800 truncate">{q}</div>
-                                  <div className="text-xs text-gray-500">{ts ? formatDateOnly(ts) : "Unknown"}</div>
+                      {(resourceSearches || [])
+                        .slice()
+                        .sort((a, b) => {
+                          const aTs = parseToMs(
+                            a.timestamp ||
+                              a.createdAt ||
+                              a.created_at ||
+                              a.time ||
+                              a.date
+                          );
+                          const bTs = parseToMs(
+                            b.timestamp ||
+                              b.createdAt ||
+                              b.created_at ||
+                              b.time ||
+                              b.date
+                          );
+                          return (bTs || 0) - (aTs || 0); // newest first
+                        })
+                        .map((r, idx) => {
+                          const q =
+                            r.query ||
+                            r.search_query ||
+                            r.term ||
+                            r.queryText ||
+                            r.text ||
+                            "(search)";
+                          const ts =
+                            r.timestamp ||
+                            r.createdAt ||
+                            r.created_at ||
+                            r.time ||
+                            r.date ||
+                            null;
+                          return (
+                            <div
+                              key={r.id || idx}
+                              className="bg-gray-50 border rounded-lg p-3"
+                            >
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="text-sm text-gray-800 truncate">
+                                  {q}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {ts ? formatDateOnly(ts) : "Unknown"}
                                 </div>
                               </div>
-                            );
-                          })
-                      )}
+                            </div>
+                          );
+                        })}
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No resource search activity for this user.</p>
+                    <p className="text-sm text-gray-500">
+                      No resource search activity for this user.
+                    </p>
                   )}
                 </div>
 
@@ -1447,27 +1570,40 @@ const CounsellorDashboard = () => {
                           if (Array.isArray(data)) {
                             if (section === "chat") {
                               return data
-                                .map((m) =>
-                                  `${m.role || m.from || "unknown"}: ${
-                                    m.content || m.text || m.message || ""
-                                  }`
+                                .map(
+                                  (m) =>
+                                    `${m.role || m.from || "unknown"}: ${
+                                      m.content || m.text || m.message || ""
+                                    }`
                                 )
                                 .join("\n");
                             }
                             if (section === "peer") {
                               return data
-                                .map((p) => `${p.title || ""}\n${p.content || ""}`)
+                                .map(
+                                  (p) => `${p.title || ""}\n${p.content || ""}`
+                                )
                                 .join("\n\n");
                             }
                             if (section === "resources") {
                               return data
-                                .map((r) => `${r.title || ""} (${r.type || ""}) - ${r.language || ""}`)
+                                .map(
+                                  (r) =>
+                                    `${r.title || ""} (${r.type || ""}) - ${
+                                      r.language || ""
+                                    }`
+                                )
                                 .join("\n");
                             }
                             if (section === "phq9") {
                               return data
-                                .map((p) =>
-                                  `Date: ${p.timestamp || p.submittedAt || ""} Score: ${p.total_score || p.totalScore || ""} Answers: ${(p.answers || []).join(", ")}`
+                                .map(
+                                  (p) =>
+                                    `Date: ${
+                                      p.timestamp || p.submittedAt || ""
+                                    } Score: ${
+                                      p.total_score || p.totalScore || ""
+                                    } Answers: ${(p.answers || []).join(", ")}`
                                 )
                                 .join("\n");
                             }
@@ -1479,7 +1615,8 @@ const CounsellorDashboard = () => {
                         const chatText = prepareText(
                           (userChatHistory || []).map((msg) => ({
                             role: msg.from || msg.role || "unknown",
-                            content: msg.text || msg.message || msg.content || "",
+                            content:
+                              msg.text || msg.message || msg.content || "",
                           })),
                           "chat"
                         );
@@ -1498,21 +1635,40 @@ const CounsellorDashboard = () => {
                         );
                         // user resource searches (engagement)
                         (resourceSearches || []).forEach((s) => {
-                          const q = s.query || s.search_query || s.term || s.text || s.queryText || "(search)";
-                          const ts = s.timestamp || s.createdAt || s.created_at || s.time || s.date || null;
+                          const q =
+                            s.query ||
+                            s.search_query ||
+                            s.term ||
+                            s.text ||
+                            s.queryText ||
+                            "(search)";
+                          const ts =
+                            s.timestamp ||
+                            s.createdAt ||
+                            s.created_at ||
+                            s.time ||
+                            s.date ||
+                            null;
                           combinedResources.push({
-                            title: `${q}${ts ? ` — ${formatDateOnly(ts)}` : ""}`,
+                            title: `${q}${
+                              ts ? ` — ${formatDateOnly(ts)}` : ""
+                            }`,
                             type: "search",
                             language: "",
                           });
                         });
 
-                        const resourcesText = prepareText(combinedResources, "resources");
+                        const resourcesText = prepareText(
+                          combinedResources,
+                          "resources"
+                        );
 
                         const phqText = prepareText(
                           (activePhqEntries || []).map((entry) => ({
-                            timestamp: entry.timestamp || entry.submittedAt || "",
-                            total_score: entry.total_score || entry.totalScore || 0,
+                            timestamp:
+                              entry.timestamp || entry.submittedAt || "",
+                            total_score:
+                              entry.total_score || entry.totalScore || 0,
                             answers: entry.answers || [],
                           })),
                           "phq9"
@@ -1524,27 +1680,45 @@ const CounsellorDashboard = () => {
                         );
 
                         const callSummarize = async (text, sectionName) => {
-                          if (!text || String(text).trim().length === 0) return { points: defaultPoints };
+                          if (!text || String(text).trim().length === 0)
+                            return { points: defaultPoints };
                           try {
-                            const res = await fetch(`${BACKEND}/api/summarize`, {
-                              method: "POST",
-                              headers: summarizeHeadersBase || { "Content-Type": "application/json" },
-                              body: JSON.stringify({ text, section: sectionName }),
-                            });
+                            const res = await fetch(
+                              `${BACKEND}/api/summarize`,
+                              {
+                                method: "POST",
+                                headers: summarizeHeadersBase || {
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({
+                                  text,
+                                  section: sectionName,
+                                }),
+                              }
+                            );
                             if (!res.ok) return { points: defaultPoints };
                             const body = await res.json();
-                            return { points: Array.isArray(body.points) && body.points.length ? body.points : defaultPoints };
+                            return {
+                              points:
+                                Array.isArray(body.points) && body.points.length
+                                  ? body.points
+                                  : defaultPoints,
+                            };
                           } catch (e) {
-                            console.warn(`Summary fetch failed for ${sectionName}`, e);
+                            console.warn(
+                              `Summary fetch failed for ${sectionName}`,
+                              e
+                            );
                             return { points: defaultPoints };
                           }
                         };
 
-                        const [chatSummary, resourceSummary, phqSummary] = await Promise.all([
-                          callSummarize(chatText, "chat"),
-                          callSummarize(resourcesText, "resources"),
-                          callSummarize(phqText, "phq9"),
-                        ]);
+                        const [chatSummary, resourceSummary, phqSummary] =
+                          await Promise.all([
+                            callSummarize(chatText, "chat"),
+                            callSummarize(resourcesText, "resources"),
+                            callSummarize(phqText, "phq9"),
+                          ]);
 
                         setSections({
                           chatHistory: chatSummary.points || [],
@@ -1552,8 +1726,12 @@ const CounsellorDashboard = () => {
                           phq9: phqSummary.points || [],
                         });
 
-                        const defaultMessage = "No data available for analysis.";
-                        const formatSection = (points) => (points && points.length > 0 ? points.map((p) => `- ${p}`).join("\n") : `- ${defaultMessage}`);
+                        const defaultMessage =
+                          "No data available for analysis.";
+                        const formatSection = (points) =>
+                          points && points.length > 0
+                            ? points.map((p) => `- ${p}`).join("\n")
+                            : `- ${defaultMessage}`;
 
                         const report = `
 # Client Report: ${activeAppointment.userName || "Client"}
@@ -1562,7 +1740,11 @@ const CounsellorDashboard = () => {
 - **Name:** ${activeAppointment.userName || "Not provided"}
 - **Email:** ${activeAppointment.email || "Not provided"}
 - **Contact:** ${activeAppointment.contact || "Not provided"}
-- **Appointment Date:** ${activeAppointment.time ? new Date(activeAppointment.time).toLocaleString() : "Not scheduled"}
+- **Appointment Date:** ${
+                          activeAppointment.time
+                            ? new Date(activeAppointment.time).toLocaleString()
+                            : "Not scheduled"
+                        }
 - **Status:** ${activeAppointment.status || "Unknown"}
 
 ## Chat History Analysis
@@ -1580,8 +1762,11 @@ ${formatSection(phqSummary.points)}
                         setShowReportPreview(true);
                       } catch (e) {
                         console.error("Report generation failed", e);
-                        const errorMessage = e?.message || "An unexpected error occurred";
-                        const friendlyMessage = errorMessage.startsWith("Failed to fetch")
+                        const errorMessage =
+                          e?.message || "An unexpected error occurred";
+                        const friendlyMessage = errorMessage.startsWith(
+                          "Failed to fetch"
+                        )
                           ? "Unable to connect to the server. Please check your internet connection and try again."
                           : `Report generation failed: ${errorMessage}`;
                         alert(friendlyMessage);
@@ -1639,8 +1824,12 @@ ${formatSection(phqSummary.points)}
                                 try {
                                   const mdToRender = reportMarkdown || "";
                                   const { jsPDF } = await import("jspdf");
-                                  const html2canvasModule = await import("html2canvas");
-                                  const html2canvas = html2canvasModule.default || html2canvasModule;
+                                  const html2canvasModule = await import(
+                                    "html2canvas"
+                                  );
+                                  const html2canvas =
+                                    html2canvasModule.default ||
+                                    html2canvasModule;
 
                                   // Helper to escape HTML when rendering plain text fallback
                                   const escapeHtml = (str) =>
@@ -1652,7 +1841,8 @@ ${formatSection(phqSummary.points)}
                                       .replace(/'/g, "&#039;");
 
                                   // Create offscreen container
-                                  const container = document.createElement("div");
+                                  const container =
+                                    document.createElement("div");
                                   container.style.position = "fixed";
                                   container.style.left = "-10000px";
                                   container.style.top = "0";
@@ -1662,7 +1852,8 @@ ${formatSection(phqSummary.points)}
                                   container.style.background = "white";
                                   container.style.boxSizing = "border-box";
                                   container.style.color = "#111827"; // text-gray-900
-                                  container.style.fontFamily = 'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
+                                  container.style.fontFamily =
+                                    'Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial';
 
                                   let appended = false;
 
@@ -1670,94 +1861,183 @@ ${formatSection(phqSummary.points)}
                                   if (MarkdownComponent && remarkGfmPlugin) {
                                     try {
                                       // Dynamically import React DOM client to render into the container
-                                      const ReactDOM = await import("react-dom/client");
-                                      const root = ReactDOM.createRoot(container);
-                                      const el = React.createElement(MarkdownComponent, { remarkPlugins: [remarkGfmPlugin] }, mdToRender);
+                                      const ReactDOM = await import(
+                                        "react-dom/client"
+                                      );
+                                      const root =
+                                        ReactDOM.createRoot(container);
+                                      const el = React.createElement(
+                                        MarkdownComponent,
+                                        { remarkPlugins: [remarkGfmPlugin] },
+                                        mdToRender
+                                      );
                                       root.render(el);
                                       document.body.appendChild(container);
                                       appended = true;
                                       // Give the browser a moment to render fonts/images/styles
-                                      await new Promise((r) => setTimeout(r, 300));
+                                      await new Promise((r) =>
+                                        setTimeout(r, 300)
+                                      );
 
                                       // Render to canvas
-                                      const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                                      const canvas = await html2canvas(
+                                        container,
+                                        {
+                                          scale: 2,
+                                          useCORS: true,
+                                          backgroundColor: "#ffffff",
+                                        }
+                                      );
 
                                       // Cleanup React root
-                                      try { root.unmount(); } catch (_) {}
-                                      if (appended) document.body.removeChild(container);
+                                      try {
+                                        root.unmount();
+                                      } catch (_) {}
+                                      if (appended)
+                                        document.body.removeChild(container);
 
                                       // Paginate canvas into PDF pages
-                                      const pdf = new jsPDF('p', 'pt', 'a4');
-                                      const pdfWidth = pdf.internal.pageSize.getWidth();
-                                      const pdfHeight = pdf.internal.pageSize.getHeight();
+                                      const pdf = new jsPDF("p", "pt", "a4");
+                                      const pdfWidth =
+                                        pdf.internal.pageSize.getWidth();
+                                      const pdfHeight =
+                                        pdf.internal.pageSize.getHeight();
 
                                       const imgWidth = canvas.width;
                                       const imgHeight = canvas.height;
                                       // height of one PDF page in canvas pixels
-                                      const pageHeightPx = Math.floor((imgWidth * pdfHeight) / pdfWidth);
+                                      const pageHeightPx = Math.floor(
+                                        (imgWidth * pdfHeight) / pdfWidth
+                                      );
 
                                       let y = 0;
                                       let pageCount = 0;
                                       while (y < imgHeight) {
-                                        const sliceHeight = Math.min(pageHeightPx, imgHeight - y);
-                                        const pageCanvas = document.createElement('canvas');
+                                        const sliceHeight = Math.min(
+                                          pageHeightPx,
+                                          imgHeight - y
+                                        );
+                                        const pageCanvas =
+                                          document.createElement("canvas");
                                         pageCanvas.width = imgWidth;
                                         pageCanvas.height = sliceHeight;
-                                        const ctx = pageCanvas.getContext('2d');
-                                        ctx.drawImage(canvas, 0, y, imgWidth, sliceHeight, 0, 0, imgWidth, sliceHeight);
-                                        const imgData = pageCanvas.toDataURL('image/png');
+                                        const ctx = pageCanvas.getContext("2d");
+                                        ctx.drawImage(
+                                          canvas,
+                                          0,
+                                          y,
+                                          imgWidth,
+                                          sliceHeight,
+                                          0,
+                                          0,
+                                          imgWidth,
+                                          sliceHeight
+                                        );
+                                        const imgData =
+                                          pageCanvas.toDataURL("image/png");
 
-                                        const imgPdfHeight = (sliceHeight * pdfWidth) / imgWidth;
+                                        const imgPdfHeight =
+                                          (sliceHeight * pdfWidth) / imgWidth;
                                         if (pageCount > 0) pdf.addPage();
-                                        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, imgPdfHeight);
+                                        pdf.addImage(
+                                          imgData,
+                                          "PNG",
+                                          0,
+                                          0,
+                                          pdfWidth,
+                                          imgPdfHeight
+                                        );
                                         y += sliceHeight;
                                         pageCount += 1;
                                       }
 
-                                      const filename = `${(activeAppointment.userName || 'report').replace(/\s+/g, '_')}_report.pdf`;
+                                      const filename = `${(
+                                        activeAppointment.userName || "report"
+                                      ).replace(/\s+/g, "_")}_report.pdf`;
                                       pdf.save(filename);
                                       return;
                                     } catch (innerErr) {
-                                      console.warn('MarkdownComponent render failed, falling back to plain text PDF', innerErr);
-                                      try { if (appended) document.body.removeChild(container); } catch (_) {}
+                                      console.warn(
+                                        "MarkdownComponent render failed, falling back to plain text PDF",
+                                        innerErr
+                                      );
+                                      try {
+                                        if (appended)
+                                          document.body.removeChild(container);
+                                      } catch (_) {}
                                     }
                                   }
 
                                   // Fallback: render plain markdown text into the container
-                                  container.innerHTML = `<div style="white-space:pre-wrap; font-size:12px; line-height:1.4;">${escapeHtml(mdToRender)}</div>`;
+                                  container.innerHTML = `<div style="white-space:pre-wrap; font-size:12px; line-height:1.4;">${escapeHtml(
+                                    mdToRender
+                                  )}</div>`;
                                   document.body.appendChild(container);
                                   // allow layout
                                   await new Promise((r) => setTimeout(r, 150));
-                                  const canvas2 = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-                                  if (appended) try { document.body.removeChild(container); } catch (_) {}
+                                  const canvas2 = await html2canvas(container, {
+                                    scale: 2,
+                                    useCORS: true,
+                                    backgroundColor: "#ffffff",
+                                  });
+                                  if (appended)
+                                    try {
+                                      document.body.removeChild(container);
+                                    } catch (_) {}
 
-                                  const pdf2 = new jsPDF('p', 'pt', 'a4');
-                                  const pdfWidth2 = pdf2.internal.pageSize.getWidth();
-                                  const pdfHeight2 = pdf2.internal.pageSize.getHeight();
+                                  const pdf2 = new jsPDF("p", "pt", "a4");
+                                  const pdfWidth2 =
+                                    pdf2.internal.pageSize.getWidth();
+                                  const pdfHeight2 =
+                                    pdf2.internal.pageSize.getHeight();
                                   const imgW = canvas2.width;
                                   const imgH = canvas2.height;
-                                  const pageHpx = Math.floor((imgW * pdfHeight2) / pdfWidth2);
+                                  const pageHpx = Math.floor(
+                                    (imgW * pdfHeight2) / pdfWidth2
+                                  );
                                   let yy = 0;
                                   let pc = 0;
                                   while (yy < imgH) {
                                     const sh = Math.min(pageHpx, imgH - yy);
-                                    const pcv = document.createElement('canvas');
+                                    const pcv =
+                                      document.createElement("canvas");
                                     pcv.width = imgW;
                                     pcv.height = sh;
-                                    const ctx2 = pcv.getContext('2d');
-                                    ctx2.drawImage(canvas2, 0, yy, imgW, sh, 0, 0, imgW, sh);
-                                    const id = pcv.toDataURL('image/png');
+                                    const ctx2 = pcv.getContext("2d");
+                                    ctx2.drawImage(
+                                      canvas2,
+                                      0,
+                                      yy,
+                                      imgW,
+                                      sh,
+                                      0,
+                                      0,
+                                      imgW,
+                                      sh
+                                    );
+                                    const id = pcv.toDataURL("image/png");
                                     const imgPdfH = (sh * pdfWidth2) / imgW;
                                     if (pc > 0) pdf2.addPage();
-                                    pdf2.addImage(id, 'PNG', 0, 0, pdfWidth2, imgPdfH);
+                                    pdf2.addImage(
+                                      id,
+                                      "PNG",
+                                      0,
+                                      0,
+                                      pdfWidth2,
+                                      imgPdfH
+                                    );
                                     yy += sh;
                                     pc += 1;
                                   }
-                                  const filename2 = `${(activeAppointment.userName || 'report').replace(/\s+/g, '_')}_report.pdf`;
+                                  const filename2 = `${(
+                                    activeAppointment.userName || "report"
+                                  ).replace(/\s+/g, "_")}_report.pdf`;
                                   pdf2.save(filename2);
                                 } catch (e) {
-                                  console.error('Download failed', e);
-                                  alert('Download failed: ' + (e?.message || e));
+                                  console.error("Download failed", e);
+                                  alert(
+                                    "Download failed: " + (e?.message || e)
+                                  );
                                 }
                               }}
                               className="px-3 py-1 rounded bg-green-600 text-white"
@@ -1841,7 +2121,9 @@ async function loadDetailsForUser(
           `${base}/api/resource-searches?email=${encodeURIComponent(email)}`
         );
         // expect array of { query?: string, timestamp?: string|number }
-        resourceSearches = Array.isArray(searchesRes) ? searchesRes : (searchesRes && searchesRes.searches) || [];
+        resourceSearches = Array.isArray(searchesRes)
+          ? searchesRes
+          : (searchesRes && searchesRes.searches) || [];
       } catch (e) {
         resourceSearches = [];
       }
@@ -1902,7 +2184,7 @@ function ChatSummaryBlock({ messages, email }) {
 
   React.useEffect(() => {
     let mounted = true;
-    const base = typeof API !== 'undefined' ? API : '';
+    const base = typeof API !== "undefined" ? API : "";
 
     const flattenMessages = (sessions) => {
       const all = [];
@@ -1920,9 +2202,9 @@ function ChatSummaryBlock({ messages, email }) {
 
     // Read an optional dev/admin token from Vite env. If set, include it as a Bearer token
     // so the backend can verify caller identity when ADMIN_SUMMARY_TOKEN is enabled.
-  const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_SUMMARY_TOKEN;
-  const defaultHeaders = { 'Content-Type': 'application/json' };
-  if (ADMIN_TOKEN) defaultHeaders['Authorization'] = `Bearer ${ADMIN_TOKEN}`;
+    const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_SUMMARY_TOKEN;
+    const defaultHeaders = { "Content-Type": "application/json" };
+    if (ADMIN_TOKEN) defaultHeaders["Authorization"] = `Bearer ${ADMIN_TOKEN}`;
     (async () => {
       setError(null);
       setSummaryText(null);
@@ -1933,7 +2215,7 @@ function ChatSummaryBlock({ messages, email }) {
       try {
         let payload = null;
 
-        if (email && typeof email === 'string') {
+        if (email && typeof email === "string") {
           // Ask server to aggregate all sessions/messages for this email.
           payload = { email };
         } else {
@@ -1942,23 +2224,27 @@ function ChatSummaryBlock({ messages, email }) {
           // Keep a small local cap to avoid huge payloads
           const capped = allMsgs.slice(-200);
           // convert to minimal shape expected by server
-          payload = { messages: capped.map((m) => ({ text: m?.text || m?.message || m?.content || '' })) };
+          payload = {
+            messages: capped.map((m) => ({
+              text: m?.text || m?.message || m?.content || "",
+            })),
+          };
         }
 
-        const res = await fetch(base + '/api/chat/summary', {
-          method: 'POST',
+        const res = await fetch(base + "/api/chat/summary", {
+          method: "POST",
           headers: { ...defaultHeaders },
           body: JSON.stringify(payload),
         });
 
         if (!res.ok) {
-          const txt = await res.text().catch(() => '');
+          const txt = await res.text().catch(() => "");
           throw new Error(`Server error ${res.status}: ${txt}`);
         }
 
         const body = await res.json();
         let gotSummary = false;
-        if (mounted && body && typeof body.summary === 'string') {
+        if (mounted && body && typeof body.summary === "string") {
           setSummaryText(body.summary.trim());
           gotSummary = true;
         }
@@ -1966,20 +2252,27 @@ function ChatSummaryBlock({ messages, email }) {
         // If server returned nothing, fall back to extractive
         // Only run the extractive fallback if server did not already provide a summary
         if (!gotSummary) {
-          const flat = flattenMessages(messages || []).map((m) => m?.text || m?.message || m?.content || '').filter(Boolean);
-          const joined = flat.join('\n');
-          const fallback = (joined.split(/(?<=[.!?])\s+/) || []).slice(0, 3).join(' ');
-          if (mounted) setSummaryText(fallback || 'No chat content available.');
+          const flat = flattenMessages(messages || [])
+            .map((m) => m?.text || m?.message || m?.content || "")
+            .filter(Boolean);
+          const joined = flat.join("\n");
+          const fallback = (joined.split(/(?<=[.!?])\s+/) || [])
+            .slice(0, 3)
+            .join(" ");
+          if (mounted) setSummaryText(fallback || "No chat content available.");
         }
       } catch (err) {
         if (!mounted) return;
         setError(err?.message || String(err));
         // fallback: small excerpt from messages
         try {
-          const flat = flattenMessages(messages || []).map((m) => m?.text || m?.message || m?.content || '').filter(Boolean).slice(-6);
-          setSummaryText(flat.join('\n') || 'No chat content available.');
+          const flat = flattenMessages(messages || [])
+            .map((m) => m?.text || m?.message || m?.content || "")
+            .filter(Boolean)
+            .slice(-6);
+          setSummaryText(flat.join("\n") || "No chat content available.");
         } catch (e) {
-          setSummaryText('No chat content available.');
+          setSummaryText("No chat content available.");
         }
       } finally {
         if (mounted) setLoading(false);
@@ -1993,17 +2286,25 @@ function ChatSummaryBlock({ messages, email }) {
 
   if (loading)
     return (
-      <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded">Generating summary...</div>
+      <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded">
+        Generating summary...
+      </div>
     );
   if (!summaryText)
     return (
-      <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded">No chat content available.</div>
+      <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded">
+        No chat content available.
+      </div>
     );
 
   return (
     <div className="text-sm text-gray-700 bg-gray-50 p-3 rounded whitespace-pre-wrap">
       {summaryText}
-      {error && <div className="mt-2 text-xs text-red-500">Summary fallback: {error}</div>}
+      {error && (
+        <div className="mt-2 text-xs text-red-500">
+          Summary fallback: {error}
+        </div>
+      )}
     </div>
   );
 }

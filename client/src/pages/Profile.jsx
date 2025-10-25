@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { User, Mail, Phone, Calendar, Users, Edit3, Save, X, Loader } from "lucide-react";
-import LogoLoader from "../components/LogoLoader";
-import { db } from "../firebase.js";
+import { db } from "../services/firebase.js";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { onAuthChange } from "../services/auth.js";
 
@@ -151,7 +150,30 @@ export default function Profile() {
   };
 
   if (dataLoading)
-    return <LogoLoader active={true} minDuration={2000} size={80} />;
+    return (
+      <div className="py-24 flex items-center justify-center">
+        <svg
+          className="animate-spin h-8 w-8 text-gray-500"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+            fill="none"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+          />
+        </svg>
+      </div>
+    );
 
   // notify app that the profile page is fully rendered
   try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
@@ -167,7 +189,7 @@ export default function Profile() {
     <div className="max-w-6xl mx-auto px-4 py-24">
       <div className="max-w-3xl mx-auto rounded-2xl" style={{ backgroundColor: "#FAF3EF" }}>
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center p-4">
           <div className="flex justify-center mb-4">
             {user?.photoURL ? (
               <img
@@ -185,8 +207,6 @@ export default function Profile() {
             Signed in as <span className="font-medium">{user.email}</span>
           </p>
         </div>
-
-        {errors.general && <p className="text-red-500 mb-4">{errors.general}</p>}
 
         {/* Profile Card */}
         <div className="bg-white p-8 rounded-b-2xl transition-transform">

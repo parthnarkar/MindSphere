@@ -26,27 +26,52 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [initialAuthChecked, setInitialAuthChecked] = useState(false);
   const [counsellors, _setCounsellors] = useState([]);
-  const [showPhq9, setShowPhq9] = useState(false);
+  const [showPhq9State, setShowPhq9State] = useState(() => {
+    try {
+      return sessionStorage.getItem('phq9Open') === '1';
+    } catch (e) {
+      return false;
+    }
+  });
+  // wrapper so we persist open state across refreshes
+  const setShowPhq9 = (v) => {
+    try {
+      if (v) sessionStorage.setItem('phq9Open', '1');
+      else sessionStorage.removeItem('phq9Open');
+    } catch (e) {
+      // ignore storage errors
+    }
+    setShowPhq9State(v);
+  };
   const [phq9Checked, setPhq9Checked] = useState(false);
   const [firstLoginCandidate, setFirstLoginCandidate] = useState(false);
   const [pageReady, setPageReady] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthChange((currentUser) => {
-      // whenever auth state changes, reset pageReady so the loader remains
-      setPageReady(false);
+      // when auth state changes: for sign-in, keep the pageReady=false so
+      // the global loader remains while role-based pages hydrate. For
+      // sign-out, ensure pageReady is true so the app doesn't get stuck
+      // on the loading overlay when returning to public/landing routes.
       setUser(currentUser);
       setLoading(false);
       setInitialAuthChecked(true);
       if (currentUser) {
-        if (currentUser.signedUp && currentUser.role === "user") {
-          const isFirstLogin = !!sessionStorage.getItem("firstLogin");
-          setFirstLoginCandidate(isFirstLogin);
-          setPhq9Checked(false);
-          setShowPhq9(false);
-        } else {
-          setShowPhq9(false);
-        }
+        setPageReady(false);
+      } else {
+        // on logout, mark the page ready so the loader hides immediately.
+        setPageReady(true);
+      }
+        if (currentUser) {
+          if (currentUser.signedUp && currentUser.role === "user") {
+            const isFirstLogin = !!sessionStorage.getItem("firstLogin");
+            setFirstLoginCandidate(isFirstLogin);
+            setPhq9Checked(false);
+            // keep persisted showPhq9 value (if user had it open before refresh)
+          } else {
+            // non-user roles shouldn't have PHQ-9 open
+            setShowPhq9(false);
+          }
       } else {
         setShowPhq9(false);
         setPhq9Checked(false);
@@ -124,8 +149,9 @@ function App() {
       if (readyTimeout) { clearTimeout(readyTimeout); readyTimeout = null; }
     };
     window.addEventListener('mindsphere:pageReady', onPageReady);
-    // fallback: don't block forever — mark ready after 10s
-    readyTimeout = setTimeout(() => { setPageReady(true); }, 10000);
+  // fallback: don't block forever — mark ready after a short timeout
+  // Shortened from 10s to 4s to avoid long stuck loaders during auth transitions
+  readyTimeout = setTimeout(() => { setPageReady(true); }, 4000);
 
     return () => {
       window.removeEventListener('mindsphere:pageReady', onPageReady);
@@ -175,10 +201,10 @@ function App() {
       {/* Top-level logo overlay: keep showing until pageReady (page dispatches 'mindsphere:pageReady') */}
       {/* Use an opaque overlay and block interactions so users don't see a transparent transition */}
   <LogoLoader active={!pageReady} minDuration={2000} size={120} text={"Preparing your setup"} overlay overlayOpacity={1} blockInteraction={true} />
-      {displayUser && displayUser.role === "user" && showPhq9 && (
+      {displayUser && displayUser.role === "user" && showPhq9State && (
         <PHQ9Modal
           user={displayUser}
-          open={showPhq9}
+          open={showPhq9State}
           onClose={() => setShowPhq9(false)}
           onSubmitted={() => setShowPhq9(false)}
         />
@@ -311,10 +337,10 @@ function App() {
       <Layout>
         {/* Top-level logo overlay: keep showing until pageReady (page dispatches 'mindsphere:pageReady') */}
         <LogoLoader active={!pageReady} minDuration={2000} size={120} text={"Preparing your setup"} overlay overlayOpacity={1} blockInteraction={true} />
-        {displayUser && displayUser.role === "user" && showPhq9 && (
+        {displayUser && displayUser.role === "user" && showPhq9State && (
           <PHQ9Modal
             user={displayUser}
-            open={showPhq9}
+            open={showPhq9State}
             onClose={() => setShowPhq9(false)}
             onSubmitted={() => setShowPhq9(false)}
           />

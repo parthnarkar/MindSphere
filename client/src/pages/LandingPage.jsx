@@ -19,6 +19,9 @@ import {
   IoSearchOutline
 } from 'react-icons/io5';
 
+// Firebase auth instance (used to gate navigation)
+import { auth } from '../services/firebase';
+
 // Image imports
 // ...existing image imports
 import heroBgIllustration from '../assets/hero-bg-illustration.png'; // New blurred background image for hero
@@ -40,7 +43,7 @@ const UiCard = ({ children, className = '', hoverEffect = true }) => (
     viewport={{ once: true, amount: 0.2 }}
     transition={{ duration: 0.7, ease: "easeOut", type: "spring", stiffness: 100 }}
     whileHover={hoverEffect ? { y: -5, boxShadow: "0 15px 30px rgba(0,0,0,0.15)", scale: 1.01 } : {}}
-    className={`relative bg-white/70 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100/50 overflow-hidden ${className}`}
+    className={`group relative bg-white/70 backdrop-blur-md rounded-2xl shadow-xl border border-gray-100/50 overflow-hidden ${className}`}
   >
     {children}
     {hoverEffect && (
@@ -50,12 +53,13 @@ const UiCard = ({ children, className = '', hoverEffect = true }) => (
   </motion.div>
 );
 
-const PrimaryButton = ({ children, onClick, className = '' }) => (
+const PrimaryButton = ({ children, onClick, className = '', ...props }) => (
   <motion.button
     whileHover={{ scale: 1.03, boxShadow: "0 10px 25px rgba(255,140,66,0.4)" }}
     whileTap={{ scale: 0.97 }}
     onClick={onClick}
     className={`relative overflow-hidden px-8 py-3 bg-[#FF8C42] text-white rounded-lg font-semibold shadow-lg hover:bg-[#e6732f] transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-[#FF8C42]/50 group ${className}`}
+    {...props}
   >
     {children}
     <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 animate-shimmer" />
@@ -66,6 +70,7 @@ const PrimaryButton = ({ children, onClick, className = '' }) => (
 const LandingPage = () => {
   const navigate = useNavigate();
   const { scrollYProgress } = useScroll();
+  const mainRef = useRef(null);
 
   const scale = useTransform(scrollYProgress, [0, 0.5], [1, 0.8]);
   const yTranslate = useTransform(scrollYProgress, [0, 0.5], [0, -100]);
@@ -99,35 +104,29 @@ const LandingPage = () => {
     };
   }, []); // Empty dependency array means this runs once on mount and cleans up on unmount
 
-  const testimonials = [
-    {
-      name: "George J.",
-      title: "Client",
-      quote: "MindSphere truly transformed my approach to academic stress. The chatbot is incredibly helpful, and knowing I can book a counselor confidentially is a huge relief.",
-      image: testimonialAvatar,
-    },
-    {
-      name: "Dr. Sarah Lee",
-      title: "Counselor",
-      quote: "As a counselor, MindSphere streamlines my appointments and client management. The platform is intuitive and provides a much-needed space for student support.",
-      image: testimonialAvatar,
-    },
-    {
-      name: "Ananya S.",
-      title: "Student",
-      quote: "The peer-to-peer forum is a safe haven. It’s comforting to connect with others facing similar challenges without judgment. Highly recommend!",
-      image: testimonialAvatar,
-    },
-    {
-      name: "Rohan V.",
-      title: "Student",
-      quote: "Finding resources used to be daunting, but MindSphere's library is fantastic. Everything from coping skills videos to local support contacts, all in one place.",
-      image: testimonialAvatar,
-    },
-  ];
-
   const handleGetStarted = () => {
-    navigate('/auth');
+    navigateToAuthWithRole('user');
+  };
+
+  // Focus main for accessibility when the page mounts
+  React.useEffect(() => {
+    try {
+      if (mainRef && mainRef.current) mainRef.current.focus({ preventScroll: true });
+    } catch (e) {}
+  }, []);
+
+  const navigateToAuthWithRole = (role = 'user') => {
+    // Only navigate to the auth page when the user is NOT authenticated.
+    // We intentionally do NOT include a role query parameter in links.
+    // If auth.currentUser exists (user is signed in), do nothing.
+    try {
+      if (!auth || !auth.currentUser) {
+        navigate('/auth');
+      }
+    } catch (e) {
+      // Fallback: if navigate failed for some reason, attempt a generic /auth
+      try { navigate('/auth'); } catch (_) {}
+    }
   };
 
   // Signal to the top-level App that the landing page is ready immediately on mount.
@@ -135,13 +134,13 @@ const LandingPage = () => {
     try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
   }, []);
 
-  // Generic handler for "Service" buttons to redirect to auth
-  const handleServiceButtonClick = () => {
-    navigate('/auth');
+  // Generic handler for "Service" buttons to redirect to auth with a role
+  const handleServiceButtonClick = (role = 'user') => {
+    navigateToAuthWithRole(role);
   };
 
   return (
-    <div className="min-h-screen bg-[#F0F2F5] font-sans text-[#263238] overflow-x-hidden antialiased relative">
+  <div ref={mainRef} tabIndex={-1} aria-label="MindSphere landing" className="min-h-screen bg-[#F0F2F5] font-sans text-[#263238] overflow-x-hidden antialiased relative">
   {/* Global CSS for shimmer and custom animations */}
   <style>{`
         @keyframes shimmer {
@@ -218,23 +217,24 @@ const LandingPage = () => {
           }}
         ></div>
 
-        {/* Mouse-following glow */}
+        {/* Mouse-following glow (responsive size, centered via transform) */}
         <div
           className="absolute z-10 pointer-events-none"
           style={{
             background: 'radial-gradient(circle at center, rgba(255,140,66,0.3) 0%, transparent 70%)',
             filter: 'blur(40px)',
-            width: '300px', // Adjust size of the glow
-            height: '300px', // Adjust size of the glow
-            left: mousePosition.x - 150, // Center the glow on the cursor
-            top: mousePosition.y - 150,  // Center the glow on the cursor
-            transition: 'transform 0.1s ease-out, opacity 0.3s ease-out', // Smooth movement
+            width: 'min(320px, 40vw)', // responsive size
+            height: 'min(320px, 40vw)',
+            left: `${mousePosition.x}px`, // positioned at cursor, then centered with transform
+            top: `${mousePosition.y}px`,
+            transform: 'translate(-50%, -50%)',
+            transition: 'transform 0.12s ease-out, opacity 0.25s ease-out', // Smooth movement
             opacity: mousePosition.x === 0 && mousePosition.y === 0 ? 0 : 1 // Hide until mouse moves
           }}
         ></div>
 
         {/* Hero Content */}
-        <motion.div style={{ y: yTranslate }} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+        <motion.div style={{ y: yTranslate }} className="max-w-7xl mx-auto p-4 relative z-20 grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
           {/* Left Panel: Brand Panel with strong headline */}
           <motion.div
             initial={{ opacity: 0, x: -80 }}
@@ -242,7 +242,7 @@ const LandingPage = () => {
             transition={{ duration: 0.9, ease: [0.17, 0.55, 0.55, 1], delay: 0.3 }}
             className="text-white text-center md:text-left"
           >
-            <h1 className="text-4xl lg:text-6xl font-extrabold leading-tight mb-6">
+            <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold leading-tight mb-6">
               <GradientText className="inline text-white">MindSphere:</GradientText> <br />
               <GradientText className="inline">Nurturing Minds, Powering Potential.</GradientText>
             </h1>
@@ -252,7 +252,7 @@ const LandingPage = () => {
             >
               Your intelligent companion for academic and personal growth. Experience next-gen support, from AI-driven insights to confidential human connection.
             </motion.p>
-            <PrimaryButton onClick={handleGetStarted} className="text-xl cursor-pointer">
+            <PrimaryButton onClick={handleGetStarted} aria-label="Launch your future" className="text-xl cursor-pointer">
               Launch Your Future <IoRocketOutline className="inline-block ml-2 text-2xl animate-bounce-horizontal" />
             </PrimaryButton>
             <div className="mt-12 flex flex-wrap justify-center md:justify-start items-center gap-6 text-white/70">
@@ -271,11 +271,11 @@ const LandingPage = () => {
           >
             {/* The illustration itself is now part of the background, no need for an <img> tag here. */}
             {/* Abstract elements image */}
-            <img
-                src={heroAbstractElements}
-                alt="Abstract elements"
-                className="absolute top-8 left-2/3 -translate-x-1/2 -translate-y-60 w-[550px] h-auto" // Adjust size and position as needed
-            />
+      <img
+        src={heroAbstractElements}
+        alt="Abstract elements"
+        className="absolute top-8 right-4 left-1/2  transform -translate-x-1/2 -translate-y-60 w-[90%] md:w-[550px] max-w-[90%] h-auto" // responsive sizing and positioning
+      />
 
             {/* Dynamic glow effect around the illustration (removed pulsing, now relies on mouse-follow) */}
             <div className="absolute inset-0 rounded-2xl z-0" style={{
@@ -323,17 +323,17 @@ const LandingPage = () => {
           </motion.h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <UiCard className="col-span-1 p-8 flex flex-col items-center group">
+            <UiCard className="col-span-1 p-6 md:p-8 flex flex-col items-center group">
               <div className="text-5xl text-[#FF8C42] mb-4 transition-transform group-hover:scale-110"><IoCubeOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-2">Holistic Approach</h3>
               <p className="text-[#90A4AE] text-sm leading-relaxed">Our consultants consider all aspects of your well-being, integrating various therapeutic techniques for comprehensive care.</p>
             </UiCard>
-            <UiCard className="col-span-1 p-8 flex flex-col items-center bg-gradient-to-br from-white/90 to-white/70 group">
+            <UiCard className="col-span-1 p-6 md:p-8 flex flex-col items-center bg-gradient-to-br from-white/90 to-white/70 group">
               <div className="text-5xl text-[#FF8C42] mb-4 transition-transform group-hover:scale-110"><IoPeopleOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-2">Expert Team</h3>
               <p className="text-[#90A4AE] text-sm leading-relaxed">Access a team of highly qualified and experienced mental health professionals dedicated to student support.</p>
             </UiCard>
-            <UiCard className="col-span-1 p-8 flex flex-col items-center group">
+            <UiCard className="col-span-1 p-6 md:p-8 flex flex-col items-center group">
               <div className="text-5xl text-[#FF8C42] mb-4 transition-transform group-hover:scale-110"><IoBulbOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-2">Unmatched Accessibility</h3>
               <p className="text-[#90A4AE] text-sm leading-relaxed">Mental health support should be easy to reach. MindSphere makes it accessible from anywhere, anytime, to all students.</p>
@@ -366,61 +366,61 @@ const LandingPage = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Service Card 1: Anonymous Chatbot */}
-            <UiCard className="p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
+            <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoChatbubblesOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Anonymous Chatbot</h3>
               <p className="text-base text-[#90A4AE] mb-6">Get supportive, non-clinical help for stress, anxiety, and study issues powered by Gemini AI.</p>
-              <PrimaryButton onClick={handleServiceButtonClick} className="w-full text-base cursor-pointer"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Chat now" className="w-full text-base"> {/* Redirect to login */}
                 Chat Now <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
 
             {/* Service Card 2: Screening Tools */}
-            <UiCard className="p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
+            <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoClipboardOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Screening Tools</h3>
               <p className="text-base text-[#90A4AE] mb-6">Confidential PHQ-9 style assessments to help you understand your mental well-being.</p>
-              <PrimaryButton onClick={handleServiceButtonClick} className="w-full text-base cursor-pointer"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Take assessment" className="w-full text-base"> {/* Redirect to login */}
                 Take Assessment <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
 
             {/* Service Card 3: Confidential Booking */}
-            <UiCard className="p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
+            <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoCalendarOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Confidential Booking</h3>
               <p className="text-base text-[#90A4AE] mb-6">Easily book appointments with qualified counselors, with options for anonymous sessions.</p>
-              <PrimaryButton onClick={handleServiceButtonClick} className="w-full text-base cursor-pointer"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Book a session" className="w-full text-base"> {/* Redirect to login */}
                 Book a Session <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
 
             {/* Service Card 4: Peer-to-Peer Support */}
-            <UiCard className="p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
+            <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoPeopleOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Peer-to-Peer Support</h3>
               <p className="text-base text-[#90A4AE] mb-6">Connect in a moderated, anonymous forum with other students for shared experiences and support.</p>
-              <PrimaryButton onClick={handleServiceButtonClick} className="w-full text-base cursor-pointer"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Join forum" className="w-full text-base"> {/* Redirect to login */}
                 Join Forum <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
 
             {/* Service Card 5: Resource Library */}
-            <UiCard className="p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
+            <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoBookOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Resource Library</h3>
               <p className="text-base text-[#90A4AE] mb-6">Access a curated collection of videos, articles, books, and local support services in our website.</p>
-              <PrimaryButton onClick={handleServiceButtonClick} className="w-full text-base cursor-pointer"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Explore resources" className="w-full text-base"> {/* Redirect to login */}
                 Explore Resources <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
 
             {/* Service Card 6: Admin & Counselor Dashboards */}
-            <UiCard className="p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
+            <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoShieldCheckmarkOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Admin & Counselor Dashboards</h3>
               <p className="text-base text-[#90A4AE] mb-6">(Internal) Tools for administrators and counselors to manage users, bookings, and monitor trends.</p>
-              <PrimaryButton onClick={handleServiceButtonClick} className="w-full text-base cursor-pointer"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Access dashboards" className="w-full text-base"> {/* Redirect to login */}
                 Access Dashboards <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>

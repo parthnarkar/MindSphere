@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { API } from "../hooks/helper";
-import { auth } from "../firebase";
+import { auth } from "../services/firebase";
 
 // Small debounce helper
 const debounce = (fn, wait = 350) => {

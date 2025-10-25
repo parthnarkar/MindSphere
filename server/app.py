@@ -23,6 +23,8 @@ CHAT_SUMMARY_CACHE = {}
 # TTL for cached chat summaries (seconds). Default 6 hours.
 CHAT_SUMMARY_CACHE_TTL = int(
     os.getenv('CHAT_SUMMARY_CACHE_TTL') or 60 * 60 * 6)
+# In-memory map to persist last-active session per user when a persistent DB is not configured.
+CHAT_ACTIVE_MAP = {}
 
 
 # Ensure CORS headers are present on every response (including error responses)
@@ -214,6 +216,61 @@ def api_chat_session():
     email = request.args.get('email') or None
     sessions = dbutils.get_sessions_by_email(email)
     return jsonify({"sessions": sessions})
+
+
+
+@bp.route('/api/chat/session/active', methods=['GET', 'POST', 'OPTIONS'])
+def api_chat_session_active():
+    """Get or set the last-active session for a given user_email.
+
+    GET ?email=... -> { session_id: ... } or {}
+    POST { user_email: ..., session_id: ... } -> { ok: True }
+    """
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    if request.method == 'GET':
+        email = request.args.get('email') or None
+        if not email:
+            return jsonify({}), 200
+        email_l = email.lower()
+        # Try Mongo-backed storage first (best-effort)
+        try:
+            mongo_db = getattr(dbutils, 'mongo_db', None)
+            if mongo_db is not None:
+                coll = mongo_db.get_collection('chat_meta')
+                doc = coll.find_one({'user_email': email_l})
+                if doc and doc.get('active_session'):
+                    return jsonify({'session_id': doc.get('active_session')}), 200
+        except Exception:
+            pass
+
+        # Fallback to in-memory map
+        sid = CHAT_ACTIVE_MAP.get(email_l)
+        if sid:
+            return jsonify({'session_id': sid}), 200
+        return jsonify({}), 200
+
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        email = data.get('user_email') or data.get('email') or None
+        session_id = data.get('session_id') if 'session_id' in data else None
+        if not email:
+            return jsonify({'error': 'user_email required'}), 400
+        email_l = email.lower()
+        # Try to persist to Mongo when available
+        try:
+            mongo_db = getattr(dbutils, 'mongo_db', None)
+            if mongo_db is not None:
+                coll = mongo_db.get_collection('chat_meta')
+                coll.update_one({'user_email': email_l}, {'$set': {'active_session': session_id}}, upsert=True)
+                return jsonify({'ok': True}), 200
+        except Exception:
+            pass
+
+        # Fallback: in-memory map
+        CHAT_ACTIVE_MAP[email_l] = session_id
+        return jsonify({'ok': True}), 200
 
 
 @bp.route('/api/chat/session/<session_id>/messages', methods=['GET', 'POST', 'OPTIONS'])
@@ -2095,4 +2152,4 @@ if __name__ == '__main__':
     # When running locally for debugging on Windows, the reloader can cause
     # socket-related errors in some environments. Disable the reloader here
     # to get stable, single-process behavior while debugging.
-    app.run(port=port, debug=True, use_reloader=False)
+    app.run(port=port, debug=True)

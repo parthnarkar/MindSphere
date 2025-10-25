@@ -1,4 +1,4 @@
-import { auth, db, googleProvider } from "../firebase.js";
+import { auth, db, googleProvider } from "../services/firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -160,49 +160,74 @@ export const logoutUser = () => {
 // Listen for auth state changes
 export const onAuthChange = (callback) => {
   return onAuthStateChanged(auth, async (currentUser) => {
-    if (currentUser) {
-      // Fetch role from Firestore
-      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
-      const signedUp = userDoc.exists();
-      const role = signedUp ? userDoc.data().role : null;
-      // If counsellor, ensure counsellor profile existence flag
-      let counsellorProfile = false;
-      if (role === 'counsellor') {
+    try {
+      if (currentUser) {
+        // Fetch role from Firestore (best-effort). Protect against errors so
+        // the app never gets stuck waiting for this async work to complete.
+        let userDoc = null;
+        let signedUp = false;
+        let role = null;
+        let userData = {};
         try {
-          const cDoc = await getDoc(doc(db, 'counsellors', currentUser.uid));
-          counsellorProfile = cDoc.exists();
-        } catch (e) {
-          counsellorProfile = false;
+          userDoc = await getDoc(doc(db, "users", currentUser.uid));
+          signedUp = userDoc.exists();
+          role = signedUp ? userDoc.data().role : null;
+          userData = userDoc.data() || {};
+        } catch (innerErr) {
+          // Log and continue with minimal user info. Do not block auth flow.
+          console.warn('onAuthChange: failed to read user doc', innerErr);
+          userDoc = null;
+          signedUp = false;
+          role = null;
+          userData = {};
         }
+
+        // If counsellor, ensure counsellor profile existence flag (best-effort)
+        let counsellorProfile = false;
+        if (role === 'counsellor') {
+          try {
+            const cDoc = await getDoc(doc(db, 'counsellors', currentUser.uid));
+            counsellorProfile = cDoc.exists();
+          } catch (e) {
+            counsellorProfile = false;
+          }
+        }
+
+        const userWithRole = {
+          ...currentUser,
+          role,
+          signedUp,
+          counsellorProfile,
+          provider: userData.provider || 'email'
+        };
+
+        // Update sessionStorage so UI can stop using the optimistic value
+        try {
+          if (role) sessionStorage.setItem('authRole', role);
+          else sessionStorage.removeItem('authRole');
+        } catch (e) { /* ignore */ }
+
+        console.log("Auth State Change Debug:", {
+          uid: currentUser.uid,
+          email: currentUser.email,
+          role: role,
+          provider: userData.provider || 'email',
+          signedUp: signedUp
+        });
+
+        // Ensure callback is always invoked with a user-like object so app
+        // doesn't remain in a perpetual loading state when Firestore fails.
+        callback(userWithRole);
+      } else {
+        try { sessionStorage.removeItem('authRole'); } catch(e) { /* ignore */ }
+        callback(null);
       }
-      // Add role, signedUp, and provider to user object
-      const userData = userDoc.data() || {};
-      const userWithRole = {
-        ...currentUser,
-        role,
-        signedUp,
-        counsellorProfile,
-        provider: userData.provider || 'email'
-      };
-
-      // Update sessionStorage so UI can stop using the optimistic value
-      try {
-        if (role) sessionStorage.setItem('authRole', role);
-        else sessionStorage.removeItem('authRole');
-      } catch (e) { /* ignore */ }
-
-      console.log("Auth State Change Debug:", {
-        uid: currentUser.uid,
-        email: currentUser.email,
-        role: role,
-        provider: userData.provider || 'email',
-        signedUp: signedUp
-      });
-
-      callback(userWithRole);
-    } else {
+    } catch (err) {
+      // Catch-all: log and ensure we call the callback to avoid stuck loaders
+      console.error('onAuthChange: unexpected error', err);
       try { sessionStorage.removeItem('authRole'); } catch(e) { /* ignore */ }
-      callback(null);
+      // Best-effort: deliver a null auth so the app can continue
+      try { callback(null); } catch (_) {}
     }
   });
 };

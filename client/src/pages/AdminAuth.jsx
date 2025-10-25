@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { loginUser, registerUser, logoutUser } from "../services/auth";
-import { db } from "../firebase";
+import { db } from "../services/firebase";
 import { collection, query as q, where, getDocs } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import bgVideo from "../assets/Login.mp4";

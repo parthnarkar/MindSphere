@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
-import { db, auth } from "../firebase";
+import { db, auth } from "../services/firebase";
 import logo from "/councellor.png";
 import { collection, getDocs, addDoc, serverTimestamp, query, where } from "firebase/firestore";
 import { toast } from "react-toastify";

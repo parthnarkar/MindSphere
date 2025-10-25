@@ -75,11 +75,21 @@ socketserver/   # Flask-SocketIO backend for real-time service
 ```powershell
 cd server
 python -m venv .venv
-. .venv/Scripts/Activate.ps1   # Or source .venv/bin/activate (Linux/Mac)
+. .venv/Scripts/Activate.ps1   
 pip install -r requirements.txt
 python api/index.py
 ```
-- Requires MongoDB (set `MONGO_URI` in `.env`).
+
+- Configuration: copy `server/.env.example` to `server/.env` and fill values (MONGO_URI, GEMINI_API_KEY, etc.).
+- If your MongoDB connection uses `mongodb+srv://` ensure `dnspython` is available (already included in `server/requirements.txt`).
+- The repository includes `server/ultimate_server_test.py` — a production-style integration check that imports the app the same way Vercel will and exercises posts/likes flows. Run it with:
+
+```powershell
+cd server
+python .\ultimate_server_test.py
+```
+
+This script is useful for CI/deployment health checks and requires the same env vars used in production (set them before running).
 
 ### 2. Frontend (React + Vite)
 
@@ -133,21 +143,3 @@ python api/index.py
 - Push to GitHub, import in Vercel, set framework to Vite (React).
 - Frontend and serverless functions auto-deployed.
 
----
-
-## Credits
-
-- Created by CollabCoders (Tanish Sanghvi, Parth Narkar, et al.)
-- AI content via Gemini (see PDF for project vision and goals).
-
----
-
-## License
-
-MIT License
-
----
-
-## For More Information
-
-See the attached project PPT for vision, goals, and mental health context.
