@@ -13,22 +13,25 @@ Notes:
   handling of safety-sensitive messages even when the external API is unavailable.
 """
 
-from datetime import datetime
 import json
 import os
 import re
 import requests
+import json
+import html
 
 # reuse model response extraction utilities
-from .model import _extract_text, _coerce_to_string
-from . import model as modelutils
-# --- Configuration ---
+from datetime import datetime
 from difflib import SequenceMatcher
+from .model import _extract_text, _coerce_to_string
+from . import db as dbutils
+from . import model as modelutils
+
+# --- Configuration ---
 try:
     import google.generativeai as genai
 except Exception:
     genai = None
-
 
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 GEMINI_MODEL = os.getenv('MODEL_NAME')
@@ -910,3 +913,540 @@ def generate_structured_report(user_meta: dict, phq_entries: list, chat_msgs: li
 
     lines.append('Generated for counselor use: concise summary to inform follow-up, triage, or referral decisions.')
     return '\n'.join(lines)
+
+
+def build_emergency_email(data: dict):
+    """Construct subject and body for an emergency notification email.
+
+    Returns (subject: str, body: str).
+    This function is best-effort and will include DB-derived context when available.
+    """
+
+    detected = data.get('detected') or {}
+    user_email = data.get('user_email') or data.get('email') or None
+    # user_name may be provided in payloads
+    user_name = data.get('user_name') or data.get('userName') or data.get('name') or None
+    session_id = data.get('session_id') or data.get('sessionId') or None
+
+    subject_prefix = ''
+    danger = None
+    if isinstance(detected, dict):
+        danger = detected.get('danger_level') or detected.get('dangerLevel')
+    if danger:
+        subject_prefix = f"[ALERT: {str(danger).upper()}] "
+
+    subject = subject_prefix + "MindSphere - Emergency notification"
+
+    # Build an enriched payload with best-effort DB lookups and safe serialisation
+    # Allow the incoming `data` to already include `request_payload`, `latest_phq`, `sessions`, or `session_messages`
+    enriched = {'detected': detected}
+    # Normalise request payload: prefer nested request_payload when provided
+    raw_request = None
+    try:
+        raw_request = data.get('request_payload') or data.get('requestPayload') or data
+    except Exception:
+        raw_request = data
+    try:
+        enriched['request_payload'] = _safe_copy(raw_request)
+        # if request payload contains user identifiers, prefer them
+        try:
+            if not user_email:
+                user_email = (raw_request.get('user_email') or raw_request.get('email') or None)
+        except Exception:
+            pass
+        try:
+            if not user_name:
+                user_name = (raw_request.get('user_name') or raw_request.get('userName') or raw_request.get('name') or None)
+        except Exception:
+            pass
+    except Exception:
+        enriched['request_payload'] = raw_request
+
+    # If caller already supplied latest_phq/sessions/session_messages, prefer those over DB lookups
+    try:
+        if isinstance(data, dict) and data.get('latest_phq'):
+            enriched['latest_phq'] = _safe_copy(data.get('latest_phq'))
+    except Exception:
+        pass
+    try:
+        if isinstance(data, dict) and data.get('sessions'):
+            enriched['sessions'] = _safe_copy(data.get('sessions'))
+    except Exception:
+        pass
+    try:
+        if isinstance(data, dict) and data.get('session_messages'):
+            enriched['session_messages'] = _safe_copy(data.get('session_messages'))
+    except Exception:
+        pass
+
+    # If detection details are nested inside request_payload, prefer those
+    try:
+        if not detected and isinstance(enriched.get('request_payload'), dict):
+            detected = enriched['request_payload'].get('detected') or enriched['request_payload'].get('detection') or {}
+    except Exception:
+        pass
+
+    def _safe_copy(obj):
+        """Return a JSON-serialisable copy of obj by converting ObjectIds and datetimes to strings."""
+        try:
+            # If it's a mapping, copy keys
+            if isinstance(obj, dict):
+                out = {}
+                for k, v in obj.items():
+                    out[k] = _safe_copy(v)
+                return out
+            # If it's a list/tuple, convert elements
+            if isinstance(obj, (list, tuple)):
+                return [_safe_copy(x) for x in obj]
+            # Datetime -> isoformat
+            if hasattr(obj, 'isoformat'):
+                try:
+                    return obj.isoformat()
+                except Exception:
+                    return str(obj)
+            # ObjectId or other -> str
+            try:
+                import bson
+                from bson.objectid import ObjectId
+                if isinstance(obj, ObjectId):
+                    return str(obj)
+            except Exception:
+                pass
+            # primitives
+            return obj
+        except Exception:
+            try:
+                return str(obj)
+            except Exception:
+                return '<unserializable>'
+
+    # Attach recent PHQ-9 entry for email (best-effort)
+    try:
+        if 'latest_phq' not in enriched and user_email and hasattr(dbutils, 'find_latest_phq9'):
+            latest = dbutils.find_latest_phq9(user_email)
+            if latest:
+                enriched['latest_phq'] = _safe_copy(latest)
+    except Exception:
+        pass
+
+    # Attach sessions metadata (best-effort)
+    try:
+        if 'sessions' not in enriched and user_email and hasattr(dbutils, 'get_sessions_by_email'):
+            sessions = dbutils.get_sessions_by_email(user_email)
+            if sessions:
+                enriched['sessions'] = _safe_copy(sessions)
+    except Exception:
+        pass
+
+    # Attach recent messages for provided session_id (best-effort)
+    try:
+        if 'session_messages' not in enriched and session_id and hasattr(dbutils, 'get_session_messages'):
+            msgs = dbutils.get_session_messages(user_email, session_id, limit=50, tail=True) or []
+            enriched['session_messages'] = _safe_copy(msgs)
+    except Exception:
+        pass
+
+    # Plain-text body
+    lines = []
+    lines.append("MindSphere — Emergency notification")
+    lines.append("===============================")
+    lines.append("")
+    lines.append("An emergency/intent-detection event was received by the server.")
+    if user_email:
+        if user_name:
+            lines.append(f"User name: {user_name}")
+        lines.append(f"User email: {user_email}")
+    if session_id:
+        lines.append(f"Session ID: {session_id}")
+    lines.append("")
+    # Build a human-readable plain-text report summarising key fields
+    try:
+        lines.append("Detected summary:")
+        # Detected info — be tolerant of many shapes and nested structures
+        def _find_value(obj, candidates):
+            if not isinstance(obj, dict):
+                return None
+            for c in candidates:
+                v = obj.get(c) if c in obj else None
+                if v not in (None, ''):
+                    return v
+            # search one level deep in nested dict values
+            for v in obj.values():
+                if isinstance(v, dict):
+                    for c in candidates:
+                        vv = v.get(c) if c in v else None
+                        if vv not in (None, ''):
+                            return vv
+            return None
+
+        if isinstance(detected, dict) or isinstance(detected, str):
+            # Intent may be a string or nested in several possible keys
+            intent = None
+            if isinstance(detected, dict):
+                intent = _find_value(detected, ['intent', 'label', 'intent_label', 'predicted_intent', 'prediction', 'label_name'])
+            elif isinstance(detected, str) and detected.strip():
+                intent = detected.strip()
+
+            # If not found, look inside the request payload common locations
+            if not intent and isinstance(enriched.get('request_payload'), dict):
+                rp = enriched.get('request_payload')
+                intent = _find_value(rp.get('detected') or rp.get('detection') or rp, ['intent', 'label', 'prediction'])
+
+            if not intent:
+                intent = 'unknown'
+
+            confidence = _find_value(detected if isinstance(detected, dict) else (enriched.get('request_payload') or {}), ['confidence', 'score', 'probability', 'confidenceScore'])
+            danger = _find_value(detected if isinstance(detected, dict) else (enriched.get('request_payload') or {}), ['danger_level', 'dangerLevel', 'danger', 'risk_level', 'riskLevel'])
+
+            lines.append(f"  - Intent: {intent}")
+            if confidence is not None:
+                try:
+                    lines.append(f"  - Confidence: {float(confidence):.2f}")
+                except Exception:
+                    lines.append(f"  - Confidence: {confidence}")
+            if danger:
+                lines.append(f"  - Danger level: {danger}")
+        else:
+            lines.append(f"  - Detected: {str(detected)}")
+
+        # Latest PHQ-9 summary (if available)
+        lp = enriched.get('latest_phq')
+        if lp:
+            try:
+                lines.append("")
+                lines.append("Latest PHQ-9 entry:")
+                # Accept multiple possible score keys and compute from answers when missing
+                score = lp.get('total_score') or lp.get('totalScore') or lp.get('score') or lp.get('total') or lp.get('answers_sum')
+                answers = lp.get('answers') or lp.get('response') or lp.get('answers_int') or lp.get('answers_ints') or []
+                # If score is blank but answers exist, compute total
+                try:
+                    if (score is None or str(score) == '') and isinstance(answers, (list, tuple)) and answers:
+                        score_vals = [int(x) for x in answers if isinstance(x, (int, float)) or (isinstance(x, str) and x.isdigit())]
+                        if score_vals:
+                            score = sum(score_vals)
+                except Exception:
+                    pass
+
+                ts = lp.get('timestamp') or lp.get('submittedAt') or ''
+                lines.append(f"  - Score: {score if score not in (None, '') else 'N/A'}")
+                if ts:
+                    lines.append(f"  - Submitted: {ts}")
+                # per-question breakdown if present
+                if isinstance(answers, (list, tuple)) and len(answers) >= 1:
+                    lines.append("  - Answers: " + ', '.join([str(x) for x in answers[:9]]))
+            except Exception:
+                pass
+
+        # Sessions summary
+        sessions = enriched.get('sessions') or []
+        ids = []
+        try:
+            if isinstance(sessions, (list, tuple)) and sessions:
+                lines.append("")
+                lines.append(f"Sessions: {len(sessions)} found")
+                # list up to 5 session ids
+                ids = []
+                for s in sessions[:5]:
+                    sid = s.get('id') or s.get('session_id') or s.get('_id') or str(s)
+                    ids.append(str(sid))
+                lines.append("  - Recent session IDs: " + ', '.join(ids))
+                # Include last message excerpts for each recent session when available
+                for s in sessions[:5]:
+                    try:
+                        lm = s.get('lastMessage') or s.get('last_message') or {}
+                        if lm:
+                            lmtext = (lm.get('text') or lm.get('message') or '')
+                            lmwho = lm.get('from') or lm.get('role') or ''
+                            lmts = lm.get('timestamp') or ''
+                            excerpt = str(lmtext).replace('\n', ' ')[:300]
+                            if lmts:
+                                lines.append(f"    - Session {str(sid)} last: [{lmts}] {lmwho}: {excerpt}")
+                            else:
+                                lines.append(f"    - Session {str(sid)} last: {lmwho}: {excerpt}")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        # Recent messages: include a short excerpt for context
+        msgs = enriched.get('session_messages') or []
+        try:
+            if isinstance(msgs, (list, tuple)) and msgs:
+                lines.append("")
+                lines.append(f"Recent messages (most recent last, up to 10):")
+                for m in (msgs or [])[-10:]:
+                    who = m.get('from') or m.get('role') or ''
+                    text = m.get('text') or m.get('message') or m.get('content') or ''
+                    ts = m.get('timestamp') or ''
+                    txt = str(text).replace('\n', ' ')[:300]
+                    if ts:
+                        lines.append(f"  - [{ts}] {who}: {txt}")
+                    else:
+                        lines.append(f"  - {who}: {txt}")
+        except Exception:
+            pass
+
+        # Provide a short list of top-level request payload keys to help triage
+        try:
+            keys = []
+            if isinstance(data, dict):
+                keys = [k for k in data.keys() if k not in ('session_messages',)]
+            if keys:
+                lines.append("")
+                lines.append("Request payload keys: " + ', '.join(keys))
+        except Exception:
+            pass
+
+        # Detailed readable payload section: print every parameter in enriched in a friendly, indented format
+        try:
+            def _format_plain(obj, indent=0, max_depth=6):
+                out = []
+                pad = '  ' * indent
+                if indent > max_depth:
+                    out.append(pad + '...')
+                    return out
+                if isinstance(obj, dict):
+                    for k in sorted(obj.keys()):
+                        v = obj.get(k)
+                        if isinstance(v, (dict, list, tuple)):
+                            out.append(pad + f"{k}:")
+                            out.extend(_format_plain(v, indent + 1, max_depth))
+                        else:
+                            try:
+                                out.append(pad + f"{k}: {v}")
+                            except Exception:
+                                out.append(pad + f"{k}: <unserializable>")
+                elif isinstance(obj, (list, tuple)):
+                    for i, item in enumerate(obj):
+                        if isinstance(item, (dict, list, tuple)):
+                            out.append(pad + f"- [{i}]")
+                            out.extend(_format_plain(item, indent + 1, max_depth))
+                        else:
+                            out.append(pad + f"- [{i}] {item}")
+                else:
+                    out.append(pad + str(obj))
+                return out
+
+            lines.append("")
+            lines.append("Detailed payload (readable):")
+            detail_lines = _format_plain(enriched, indent=0, max_depth=6)
+            lines.extend(detail_lines)
+            lines.append("")
+            lines.append("Full enriched JSON (for debugging):")
+        except Exception:
+            lines.append("")
+            lines.append("Full enriched JSON (for debugging):")
+        try:
+            json_text = json.dumps(enriched, indent=2, default=str)
+        except Exception:
+            try:
+                json_text = str(enriched)
+            except Exception:
+                json_text = '<unserializable>'
+        lines.append(json_text)
+        lines.append("")
+        lines.append("-- End of notification --")
+    except Exception:
+        # Fallback to raw JSON if anything goes wrong building the report
+        try:
+            json_text = json.dumps(enriched, indent=2, default=str)
+        except Exception:
+            try:
+                json_text = str(enriched)
+            except Exception:
+                json_text = '<unserializable>'
+        lines = ["MindSphere — Emergency notification", "===============================", "", json_text, "", "-- End of notification --"]
+
+    plain_body = "\n".join(lines)
+
+    # Build a simple HTML report version (human-readable sections)
+    try:
+        parts = []
+        parts.append('<html>')
+        parts.append('<body style="font-family: system-ui, -apple-system, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial; color:#111;">')
+        parts.append('<h2 style="color:#c33;">MindSphere — Emergency notification</h2>')
+        parts.append('<p>An emergency/intent-detection event was received by the server.</p>')
+        if user_email:
+            if user_name:
+                parts.append(f'<p><strong>User name:</strong> {html.escape(str(user_name))}</p>')
+            parts.append(f'<p><strong>User email:</strong> {html.escape(str(user_email))}</p>')
+        if session_id:
+            parts.append(f'<p><strong>Session ID:</strong> {html.escape(str(session_id))}</p>')
+
+        # Detected summary
+        parts.append('<h3>Detected</h3>')
+        try:
+            # reuse tolerant extraction logic from plain text
+            def _find_value_html(obj, candidates):
+                if not isinstance(obj, dict):
+                    return None
+                for c in candidates:
+                    v = obj.get(c) if c in obj else None
+                    if v not in (None, ''):
+                        return v
+                for v in obj.values():
+                    if isinstance(v, dict):
+                        for c in candidates:
+                            vv = v.get(c) if c in v else None
+                            if vv not in (None, ''):
+                                return vv
+                return None
+
+            if isinstance(detected, dict) or isinstance(detected, str):
+                intent_val = None
+                if isinstance(detected, dict):
+                    intent_val = _find_value_html(detected, ['intent', 'label', 'intent_label', 'predicted_intent', 'prediction', 'label_name'])
+                elif isinstance(detected, str) and detected.strip():
+                    intent_val = detected.strip()
+                if not intent_val and isinstance(enriched.get('request_payload'), dict):
+                    rp = enriched.get('request_payload')
+                    intent_val = _find_value_html(rp.get('detected') or rp.get('detection') or rp, ['intent', 'label', 'prediction'])
+                if not intent_val:
+                    intent_val = 'unknown'
+
+                confidence_val = _find_value_html(detected if isinstance(detected, dict) else (enriched.get('request_payload') or {}), ['confidence', 'score', 'probability', 'confidenceScore'])
+                danger_val = _find_value_html(detected if isinstance(detected, dict) else (enriched.get('request_payload') or {}), ['danger_level', 'dangerLevel', 'danger', 'risk_level', 'riskLevel'])
+
+                intent = html.escape(str(intent_val))
+                danger = html.escape(str(danger_val)) if danger_val not in (None, '') else ''
+                parts.append('<ul>')
+                parts.append(f'<li><strong>Intent:</strong> {intent}</li>')
+                if confidence_val is not None:
+                    try:
+                        parts.append(f'<li><strong>Confidence:</strong> {float(confidence_val):.2f}</li>')
+                    except Exception:
+                        parts.append(f'<li><strong>Confidence:</strong> {html.escape(str(confidence_val))}</li>')
+                if danger:
+                    parts.append(f'<li><strong>Danger level:</strong> {danger}</li>')
+                parts.append('</ul>')
+            else:
+                parts.append(f'<p>{html.escape(str(detected))}</p>')
+        except Exception:
+            parts.append('<p>Could not summarise detected payload.</p>')
+
+        # PHQ-9
+        if lp:
+            parts.append('<h3>Latest PHQ-9</h3>')
+            try:
+                # mirror plain-text logic for score and answers
+                score = lp.get('total_score') or lp.get('totalScore') or lp.get('score') or lp.get('total') or lp.get('answers_sum')
+                answers = lp.get('answers') or lp.get('response') or lp.get('answers_int') or lp.get('answers_ints') or []
+                try:
+                    if (score is None or str(score) == '') and isinstance(answers, (list, tuple)) and answers:
+                        score_vals = [int(x) for x in answers if isinstance(x, (int, float)) or (isinstance(x, str) and x.isdigit())]
+                        if score_vals:
+                            score = sum(score_vals)
+                except Exception:
+                    pass
+
+                parts.append('<ul>')
+                parts.append(f"<li><strong>Score:</strong> {html.escape(str(score if score not in (None, '') else 'N/A'))}</li>")
+                if lp.get('timestamp'):
+                    parts.append(f"<li><strong>Submitted:</strong> {html.escape(str(lp.get('timestamp')))}</li>")
+                if isinstance(answers, (list, tuple)) and answers:
+                    parts.append(f"<li><strong>Answers:</strong> {html.escape(', '.join([str(x) for x in answers[:9]]))}</li>")
+                parts.append('</ul>')
+            except Exception:
+                parts.append('<p>Could not render PHQ-9 details.</p>')
+
+        # Sessions
+        try:
+            if isinstance(sessions, (list, tuple)) and sessions:
+                parts.append('<h3>Sessions</h3>')
+                parts.append(f'<p>{len(sessions)} session(s) found. Recent IDs: ' + html.escape(', '.join(ids)) + '</p>')
+                # include last message excerpts for the recent sessions
+                parts.append('<ul>')
+                for s in sessions[:5]:
+                    try:
+                        sid = s.get('id') or s.get('session_id') or s.get('_id') or str(s)
+                        lm = s.get('lastMessage') or s.get('last_message') or {}
+                        if lm:
+                            lmtext = html.escape(str(lm.get('text') or lm.get('message') or ''))
+                            lmwho = html.escape(str(lm.get('from') or lm.get('role') or ''))
+                            lmts = html.escape(str(lm.get('timestamp') or ''))
+                            if lmts:
+                                parts.append(f'<li><strong>Session {html.escape(str(sid))} last:</strong> [{lmts}] {lmwho}: {lmtext}</li>')
+                            else:
+                                parts.append(f'<li><strong>Session {html.escape(str(sid))} last:</strong> {lmwho}: {lmtext}</li>')
+                    except Exception:
+                        pass
+                parts.append('</ul>')
+        except Exception:
+            pass
+
+        # Recent messages
+        try:
+            if isinstance(msgs, (list, tuple)) and msgs:
+                parts.append('<h3>Recent messages</h3>')
+                parts.append('<div style="background:#f6f8fa;border:1px solid #e1e4e8;padding:12px;border-radius:6px;">')
+                for m in (msgs or [])[-10:]:
+                    who = html.escape(str(m.get('from') or m.get('role') or ''))
+                    text = html.escape(str(m.get('text') or m.get('message') or m.get('content') or ''))
+                    ts = html.escape(str(m.get('timestamp') or ''))
+                    if ts:
+                        parts.append(f'<p><strong>[{ts}] {who}:</strong> {text}</p>')
+                    else:
+                        parts.append(f'<p><strong>{who}:</strong> {text}</p>')
+                parts.append('</div>')
+        except Exception:
+            pass
+
+        # Full JSON for debugging (escaped)
+        # Detailed readable payload (HTML): expand every key/value in enriched in a friendly tree
+        parts.append('<h3>Detailed payload (readable)</h3>')
+        try:
+            def _format_html(obj):
+                # returns an HTML fragment (ul/li) for the object
+                if isinstance(obj, dict):
+                    parts_html = ['<ul style="margin:6px 0 6px 12px;">']
+                    for k in sorted(obj.keys()):
+                        v = obj.get(k)
+                        if isinstance(v, (dict, list, tuple)):
+                            parts_html.append(f'<li><strong>{html.escape(str(k))}:</strong> ' + _format_html(v) + '</li>')
+                        else:
+                            parts_html.append(f'<li><strong>{html.escape(str(k))}:</strong> {html.escape(str(v))}</li>')
+                    parts_html.append('</ul>')
+                    return '\n'.join(parts_html)
+                elif isinstance(obj, (list, tuple)):
+                    parts_html = ['<ul style="margin:6px 0 6px 12px;">']
+                    for i, item in enumerate(obj):
+                        if isinstance(item, (dict, list, tuple)):
+                            parts_html.append(f'<li><strong>[{i}]</strong> ' + _format_html(item) + '</li>')
+                        else:
+                            parts_html.append(f'<li><strong>[{i}]</strong> {html.escape(str(item))}</li>')
+                    parts_html.append('</ul>')
+                    return '\n'.join(parts_html)
+                else:
+                    return html.escape(str(obj))
+
+            parts.append(_format_html(enriched))
+        except Exception:
+            parts.append('<p>Could not render detailed payload.</p>')
+
+        parts.append('<h3>Full enriched JSON (debug)</h3>')
+        try:
+            parts.append('<pre style="background:#fff;border:1px solid #eee;padding:12px;border-radius:6px;white-space:pre-wrap;">')
+            parts.append(html.escape(json_text))
+            parts.append('</pre>')
+        except Exception:
+            parts.append('<p>Could not include full JSON.</p>')
+
+        parts.append('<p style="color:#666;font-size:12px;margin-top:12px;">This is an automated alert from MindSphere.</p>')
+        parts.append('</body>')
+        parts.append('</html>')
+        html_body = '\n'.join(parts)
+    except Exception:
+        # Fallback to simple escaped JSON view
+        try:
+            pretty_json = html.escape(json.dumps(enriched, indent=2, default=str))
+        except Exception:
+            pretty_json = html.escape(str(enriched))
+        html_body = f"""
+        <html>
+          <body>
+            <pre>{pretty_json}</pre>
+          </body>
+        </html>
+        """
+
+    return subject, plain_body, html_body

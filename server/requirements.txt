@@ -1,9 +1,45 @@
-# Server requirements for MindSphere
-# Use conservative version ranges to avoid unexpected major-version upgrades
-Flask>=2.3,<3.0
+## MindSphere server dependencies (Vercel-ready)
+## This file lists the runtime packages the server uses directly. It prefers
+## conservative version ranges to avoid accidental breaking upgrades while
+## remaining compatible with Vercel's Python runtime.
+
+## Core web framework
+Flask>=2.3,<3.2
 Flask-Cors>=3.0,<4.0
-google-generativeai>=0.2.0
+
+## Environment/config
 python-dotenv>=1.0,<3.0
+
+## Generative AI client used by the helpers/model layer
+google-generativeai>=0.2.0
+
+## HTTP client (used in utils/helpers.py)
+requests>=2.28,<3.0
+
+## MongoDB client & SRV resolver (required when using mongodb+srv URIs)
 pymongo>=4.6,<5.0
-# Optional: dnspython is required when using MongoDB URIs with +srv (mongodb+srv://)
+
+# Required for DNS SRV resolution with pymongo when using mongodb+srv URIs
 dnspython>=2.0
+
+## Note: many modules (e.g., pymongo) bundle the `bson` module — avoid installing
+## the separate `bson` package which may conflict. Imports guarded by the code
+## make runtime optional when not configured.
+
+## WSGI server for traditional deployments (not required for Vercel serverless
+## functions but useful for local/prod containers). Vercel's serverless Python
+## deployment does not require gunicorn; keep it here for portability.
+# gunicorn>=20.1,<21.0
+
+## --- Development / testing extras (optional) ---
+# Uncomment to enable test tooling in your environment (do NOT enable in
+# lightweight production containers unless needed).
+# pytest>=7.0
+# pytest-cov>=4.0
+
+## Security & best-practice notes
+# - Keep credentials (SMTP, MONGO_URI, GEMINI_API_KEY) out of source control.
+# - Configure environment variables via Vercel dashboard / secrets.
+# - If deploying as Vercel serverless functions, ensure your `vercel.json` routes
+#   point to the Python entrypoint and that large model calls respect Vercel's
+#   execution timeout limits (split work into async/background when needed).

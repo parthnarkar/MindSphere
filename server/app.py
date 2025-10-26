@@ -2,12 +2,22 @@ from werkzeug.exceptions import NotFound, MethodNotAllowed
 from utils import helpers as helpers
 from utils import model as modelutils
 from utils import db as dbutils
-from flask import Flask, request, jsonify, Blueprint
+from flask import Flask, request, jsonify, Blueprint, make_response
 from flask_cors import CORS
 from dotenv import load_dotenv
-import os
-import sys
+from email.message import EmailMessage
+from datetime import timezone as _tz
 from datetime import datetime
+
+import os
+import re
+import traceback as _tb
+import sys
+import traceback
+import time
+import hashlib
+import smtplib
+
 
 # Load env
 load_dotenv()
@@ -46,11 +56,9 @@ def _add_cors_headers(response):
 @app.errorhandler(Exception)
 def _handle_uncaught_error(err):
     # Log full traceback to the console to help debugging
-    import traceback
     traceback.print_exc()
     # Build a simple JSON payload for the client
     payload = {'error': 'internal_server_error', 'details': str(err)}
-    from flask import make_response, jsonify
     resp = make_response(jsonify(payload), 500)
     # Ensure our CORS headers are present on the error response as well
     resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -65,7 +73,6 @@ def _handle_uncaught_error(err):
 
 @app.errorhandler(NotFound)
 def _handle_not_found(err):
-    from flask import make_response, jsonify, request
     payload = {'error': 'not_found', 'path': request.path, 'details': str(err)}
     resp = make_response(jsonify(payload), 404)
     resp.headers['Access-Control-Allow-Origin'] = '*'
@@ -77,7 +84,6 @@ def _handle_not_found(err):
 
 @app.errorhandler(MethodNotAllowed)
 def _handle_method_not_allowed(err):
-    from flask import make_response, jsonify, request
     payload = {'error': 'method_not_allowed',
                'path': request.path, 'details': str(err)}
     resp = make_response(jsonify(payload), 405)
@@ -93,7 +99,6 @@ def _handle_method_not_allowed(err):
 def _handle_global_options():
     # If it's an OPTIONS preflight, return an empty 200 response; Flask-CORS will add the required headers.
     if request.method == 'OPTIONS':
-        from flask import make_response
         resp = make_response('', 200)
         return resp
 
@@ -219,6 +224,80 @@ def api_chat_session():
 
 
 
+@bp.route('/api/notify/emergency_mail', methods=['POST', 'OPTIONS'])
+def api_send_email():
+    """SMTP mail function"""
+    # Handle CORS preflight quickly
+    if request.method == 'OPTIONS':
+        return '', 204
+    # Expect a JSON body describing the detected info
+    data = request.get_json() or {}
+
+    # Build subject and body using a dedicated helper so the route stays small
+    try:
+        # build_emergency_email now returns a 3-tuple: (subject, plain_text, html_text)
+        subject, plain_body, html_body = helpers.build_emergency_email(data)
+    except Exception as e:
+        print('[api_send_email] failed to build email body', e)
+        return jsonify({'error': 'email_build_failed', 'details': str(e)}), 500
+    # SMTP configuration from environment
+    smtp_host = os.getenv('SMTP_HOST')
+    smtp_port = int(os.getenv('SMTP_PORT') or 587)
+    smtp_user = os.getenv('SMTP_USER')
+    smtp_pass = os.getenv('SMTP_PASS')
+    email_from = os.getenv('EMAIL_FROM')
+    email_to = os.getenv('EMAIL_TO')
+
+    if not smtp_host or not email_to:
+        # Missing configuration: return 500 with helpful message
+        msg = "SMTP_HOST and EMAIL_TO must be set to send emergency mail"
+        print(f"[api_send_email] misconfigured: {msg}")
+        return jsonify({'error': 'mail_not_configured', 'details': msg}), 500
+
+    # Construct email message
+    try:
+        em = EmailMessage()
+        # Ensure there is a sensible From header
+        em['From'] = email_from or smtp_user or 'no-reply@localhost'
+        em['To'] = email_to
+        em['Subject'] = subject
+        # Set plain text body and add HTML alternative when available
+        em.set_content(plain_body)
+        if html_body:
+            try:
+                em.add_alternative(html_body, subtype='html')
+            except Exception:
+                # If adding HTML alternative fails for any reason, continue with plain text
+                pass
+
+        # Send via SMTP with STARTTLS when possible
+        try:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+                s.ehlo()
+                # use starttls for secure transport when port != 25
+                try:
+                    s.starttls()
+                    s.ehlo()
+                except Exception:
+                    pass
+                if smtp_user and smtp_pass:
+                    try:
+                        s.login(smtp_user, smtp_pass)
+                    except Exception as e:
+                        print('[api_send_email] SMTP login failed', e)
+                s.send_message(em)
+        except Exception as e:
+            print('[api_send_email] SMTP send failed', e)
+            return jsonify({'error': 'smtp_send_failed', 'details': str(e)}), 500
+
+        print('[api_send_email] emergency mail sent to', email_to)
+        return jsonify({'ok': True}), 200
+
+    except Exception as e:
+        print('[api_send_email] failed to build/send email', e)
+        return jsonify({'error': 'send_failed', 'details': str(e)}), 500
+
+
 @bp.route('/api/chat/session/active', methods=['GET', 'POST', 'OPTIONS'])
 def api_chat_session_active():
     """Get or set the last-active session for a given user_email.
@@ -263,7 +342,8 @@ def api_chat_session_active():
             mongo_db = getattr(dbutils, 'mongo_db', None)
             if mongo_db is not None:
                 coll = mongo_db.get_collection('chat_meta')
-                coll.update_one({'user_email': email_l}, {'$set': {'active_session': session_id}}, upsert=True)
+                coll.update_one({'user_email': email_l}, {
+                                '$set': {'active_session': session_id}}, upsert=True)
                 return jsonify({'ok': True}), 200
         except Exception:
             pass
@@ -398,8 +478,7 @@ def api_chat_summary():
     )
 
     # Use a simple cache key to avoid repeated model calls on the same conversation
-    import time
-    import hashlib
+    
     key_source = (email or '') + '|' + (session_id or '') + '|' + \
         hashlib.sha256(convo.encode('utf-8')).hexdigest()
     cache_entry = CHAT_SUMMARY_CACHE.get(key_source)
@@ -422,7 +501,6 @@ def api_chat_summary():
         # try to extract retry delay in seconds
         retry_after = None
         try:
-            import re
             m = re.search(r'retry in (\d+(?:\.\d+)?)s', err_str)
             if m:
                 retry_after = float(m.group(1))
@@ -814,7 +892,6 @@ Generate 5 detailed bullet points:""")
                 response = modelutils.generate_coping_text(prompt)
             except Exception as _model_err:
                 # Print full traceback to server logs for debugging
-                import traceback as _tb
                 _tb.print_exc()
                 # Provide a safe fallback to the frontend so the UI can render a report
                 # without surfacing a 500. Include a warning and any retry hint if detectable.
@@ -830,7 +907,6 @@ Generate 5 detailed bullet points:""")
                 # Try to extract a retry delay from provider error messages (e.g., "retry in 9.09s")
                 retry_after = None
                 try:
-                    import re
                     m = re.search(r'retry in (\d+(?:\.\d+)?)s', err_str)
                     if m:
                         retry_after = float(m.group(1))
@@ -1019,7 +1095,8 @@ def api_posts():
         createdAt = data.get('createdAt') or data.get('timestamp') or None
 
         # Debug logging to help tests / developer understand matching path
-        print(f"[api_posts:DELETE] incoming id={post_id} email={email} createdAt={createdAt}")
+        print(
+            f"[api_posts:DELETE] incoming id={post_id} email={email} createdAt={createdAt}")
 
         # Normalize createdAt: accept JS trailing 'Z' and try to parse to datetime
         created_at_dt = None
@@ -1032,8 +1109,8 @@ def api_posts():
                 # convert aware -> naive UTC
                 try:
                     if created_at_dt.tzinfo is not None:
-                        from datetime import timezone as _tz
-                        created_at_dt = created_at_dt.astimezone(_tz.utc).replace(tzinfo=None)
+                        created_at_dt = created_at_dt.astimezone(
+                            _tz.utc).replace(tzinfo=None)
                 except Exception:
                     try:
                         created_at_dt = created_at_dt.replace(tzinfo=None)
@@ -1072,7 +1149,8 @@ def api_posts():
                                 found = coll.find_one({'_id': oid}, {'_id': 1})
                                 if found:
                                     res = coll.delete_one({'_id': oid})
-                                    print(f"[api_posts:DELETE] deleted by _id (ObjectId) oid={oid} count={getattr(res,'deleted_count',0)}")
+                                    print(
+                                        f"[api_posts:DELETE] deleted by _id (ObjectId) oid={oid} count={getattr(res,'deleted_count',0)}")
                                     if getattr(res, 'deleted_count', 0) > 0:
                                         return jsonify({'deleted': True}), 200
                         except Exception as e:
@@ -1084,7 +1162,8 @@ def api_posts():
                             found = coll.find_one({'id': post_id}, {'_id': 1})
                             if found:
                                 res = coll.delete_one({'id': post_id})
-                                print(f"[api_posts:DELETE] deleted by id field={post_id} count={getattr(res,'deleted_count',0)}")
+                                print(
+                                    f"[api_posts:DELETE] deleted by id field={post_id} count={getattr(res,'deleted_count',0)}")
                                 if getattr(res, 'deleted_count', 0) > 0:
                                     return jsonify({'deleted': True}), 200
                         except Exception as e:
@@ -1093,20 +1172,24 @@ def api_posts():
                     # 3) If email+createdAt provided, try matching that (createdAt may be datetime or string)
                     if email and created_at_dt is not None:
                         try:
-                            query = {'email': email.lower(), 'createdAt': created_at_dt}
+                            query = {'email': email.lower(
+                            ), 'createdAt': created_at_dt}
                             found = coll.find_one(query, {'_id': 1})
                             if found:
                                 res = coll.delete_one(query)
-                                print(f"[api_posts:DELETE] deleted by email+createdAt query count={getattr(res,'deleted_count',0)}")
+                                print(
+                                    f"[api_posts:DELETE] deleted by email+createdAt query count={getattr(res,'deleted_count',0)}")
                                 if getattr(res, 'deleted_count', 0) > 0:
                                     return jsonify({'deleted': True}), 200
                         except Exception as e:
-                            print('[api_posts:DELETE] email+createdAt route failed', e)
+                            print(
+                                '[api_posts:DELETE] email+createdAt route failed', e)
 
                     # 4) If createdAt was a string we couldn't parse, scan same-email docs and compare createdAt isoformats
                     if isinstance(createdAt, str) and email:
                         try:
-                            cursor = coll.find({'email': email.lower()}, {'createdAt': 1})
+                            cursor = coll.find(
+                                {'email': email.lower()}, {'createdAt': 1})
                             for d in cursor.limit(2000):
                                 ca = d.get('createdAt')
                                 try:
@@ -1116,22 +1199,27 @@ def api_posts():
                                 # Accept both variants with or without trailing Z
                                 if ca_iso == createdAt or (ca_iso + 'Z') == createdAt or (createdAt.endswith('Z') and createdAt[:-1] == ca_iso):
                                     try:
-                                        res = coll.delete_one({'_id': d.get('_id')})
-                                        print(f"[api_posts:DELETE] deleted by email+createdAt-iso match _id={d.get('_id')} count={getattr(res,'deleted_count',0)}")
+                                        res = coll.delete_one(
+                                            {'_id': d.get('_id')})
+                                        print(
+                                            f"[api_posts:DELETE] deleted by email+createdAt-iso match _id={d.get('_id')} count={getattr(res,'deleted_count',0)}")
                                         if getattr(res, 'deleted_count', 0) > 0:
                                             return jsonify({'deleted': True}), 200
                                     except Exception:
                                         pass
                         except Exception as e:
-                            print('[api_posts:DELETE] scan-by-email route failed', e)
+                            print(
+                                '[api_posts:DELETE] scan-by-email route failed', e)
 
                     # 5) Fallback: scan a limited set and match stringified _id
                     if post_id:
                         try:
                             for d in coll.find({}, {'_id': 1}).limit(2000):
                                 if str(d.get('_id')) == str(post_id):
-                                    res = coll.delete_one({'_id': d.get('_id')})
-                                    print(f"[api_posts:DELETE] deleted by scan _id match count={getattr(res,'deleted_count',0)}")
+                                    res = coll.delete_one(
+                                        {'_id': d.get('_id')})
+                                    print(
+                                        f"[api_posts:DELETE] deleted by scan _id match count={getattr(res,'deleted_count',0)}")
                                     if getattr(res, 'deleted_count', 0) > 0:
                                         return jsonify({'deleted': True}), 200
                         except Exception as e:
@@ -1160,7 +1248,8 @@ def api_posts():
                     if p_email == str(email).lower():
                         p_created = p.get('createdAt')
                         try:
-                            p_created_str = p_created.isoformat() if hasattr(p_created, 'isoformat') else str(p_created)
+                            p_created_str = p_created.isoformat() if hasattr(
+                                p_created, 'isoformat') else str(p_created)
                         except Exception:
                             p_created_str = str(p_created)
 
@@ -1225,7 +1314,8 @@ def api_posts():
                     try:
                         if created_at.tzinfo is not None:
                             from datetime import timezone as _tz
-                            created_at = created_at.astimezone(_tz.utc).replace(tzinfo=None)
+                            created_at = created_at.astimezone(
+                                _tz.utc).replace(tzinfo=None)
                     except Exception:
                         try:
                             created_at = created_at.replace(tzinfo=None)
@@ -1265,7 +1355,8 @@ def api_posts():
                 try:
                     str_id = str(res.inserted_id)
                     try:
-                        coll.update_one({'_id': res.inserted_id}, {'$set': {'id': str_id}}, upsert=False)
+                        coll.update_one({'_id': res.inserted_id}, {
+                                        '$set': {'id': str_id}}, upsert=False)
                     except Exception:
                         # If the update fails for any reason, continue - deletion by ObjectId will still work
                         pass
@@ -1372,7 +1463,8 @@ def api_posts():
                     try:
                         lb = item.get('liked_by') or item.get('likedBy') or []
                         item['liked_by'] = lb
-                        item['likes_count'] = len(lb) if isinstance(lb, (list, tuple)) else 0
+                        item['likes_count'] = len(lb) if isinstance(
+                            lb, (list, tuple)) else 0
                     except Exception:
                         item['liked_by'] = []
                         item['likes_count'] = 0
@@ -1395,7 +1487,8 @@ def api_posts():
         try:
             lb = item.get('liked_by') or item.get('likedBy') or []
             item['liked_by'] = lb
-            item['likes_count'] = len(lb) if isinstance(lb, (list, tuple)) else 0
+            item['likes_count'] = len(lb) if isinstance(
+                lb, (list, tuple)) else 0
         except Exception:
             item['liked_by'] = []
             item['likes_count'] = 0
@@ -1438,9 +1531,11 @@ def api_posts_like():
                 try:
                     oid = ObjectId(post_id)
                     if action == 'like':
-                        coll.update_one({'_id': oid}, {'$addToSet': {'liked_by': email_l}})
+                        coll.update_one(
+                            {'_id': oid}, {'$addToSet': {'liked_by': email_l}})
                     else:
-                        coll.update_one({'_id': oid}, {'$pull': {'liked_by': email_l}})
+                        coll.update_one(
+                            {'_id': oid}, {'$pull': {'liked_by': email_l}})
                     doc = coll.find_one({'_id': oid}, {'liked_by': 1})
                     lb = doc.get('liked_by') if doc else []
                     return jsonify({'ok': True, 'id': post_id, 'likes_count': len(lb or []), 'liked': email_l in (lb or [])}), 200
@@ -1449,12 +1544,15 @@ def api_posts_like():
 
             # locate by stored id field
             try:
-                found = coll.find_one({'id': post_id}, {'_id': 1, 'liked_by': 1})
+                found = coll.find_one(
+                    {'id': post_id}, {'_id': 1, 'liked_by': 1})
                 if found:
                     if action == 'like':
-                        coll.update_one({'id': post_id}, {'$addToSet': {'liked_by': email_l}})
+                        coll.update_one({'id': post_id}, {
+                                        '$addToSet': {'liked_by': email_l}})
                     else:
-                        coll.update_one({'id': post_id}, {'$pull': {'liked_by': email_l}})
+                        coll.update_one({'id': post_id}, {
+                                        '$pull': {'liked_by': email_l}})
                     doc = coll.find_one({'id': post_id}, {'liked_by': 1})
                     lb = doc.get('liked_by') if doc else []
                     return jsonify({'ok': True, 'id': post_id, 'likes_count': len(lb or []), 'liked': email_l in (lb or [])}), 200
@@ -1466,10 +1564,13 @@ def api_posts_like():
                 for d in coll.find({}, {'_id': 1, 'liked_by': 1}).limit(2000):
                     if str(d.get('_id')) == str(post_id):
                         if action == 'like':
-                            coll.update_one({'_id': d.get('_id')}, {'$addToSet': {'liked_by': email_l}})
+                            coll.update_one({'_id': d.get('_id')}, {
+                                            '$addToSet': {'liked_by': email_l}})
                         else:
-                            coll.update_one({'_id': d.get('_id')}, {'$pull': {'liked_by': email_l}})
-                        doc = coll.find_one({'_id': d.get('_id')}, {'liked_by': 1})
+                            coll.update_one({'_id': d.get('_id')}, {
+                                            '$pull': {'liked_by': email_l}})
+                        doc = coll.find_one(
+                            {'_id': d.get('_id')}, {'liked_by': 1})
                         lb = doc.get('liked_by') if doc else []
                         return jsonify({'ok': True, 'id': post_id, 'likes_count': len(lb or []), 'liked': email_l in (lb or [])}), 200
             except Exception:
@@ -1489,7 +1590,8 @@ def api_posts_like():
                     if email_l not in [x.lower() for x in lb]:
                         lb = lb + [email_l]
                 else:
-                    lb = [x for x in lb if str(x).lower() != str(email_l).lower()]
+                    lb = [x for x in lb if str(
+                        x).lower() != str(email_l).lower()]
                 p['liked_by'] = lb
                 p['likes_count'] = len(lb)
                 return jsonify({'ok': True, 'id': post_id, 'likes_count': p['likes_count'], 'liked': email_l in [x.lower() for x in lb]}), 200
