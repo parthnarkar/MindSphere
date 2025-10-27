@@ -1,6 +1,19 @@
 import { useState, useRef, useEffect } from "react";
 import { API } from "../hooks/helper";
-import { ArrowLeft, ArrowRight, Trash2, Loader, Clock, Plus } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Trash2,
+  Loader,
+  Clock,
+  Plus,
+} from "lucide-react";
+
+import AuthPage from "./Authentication";
+
+// Get Current User Info and Session ID from authPage or context
+const userName = localStorage.getItem("userName");
+const email = localStorage.getItem("email");
 
 // Shared UI classes for consistency
 const btnBase = "px-3 py-2 rounded-md text-sm font-medium";
@@ -30,8 +43,24 @@ function formatSessionName(s) {
   )}`;
 }
 
-// Safely format message text: escape HTML, convert URLs to links,
-// support simple markdown (**bold**, *italic*, `code`) and preserve newlines.
+// Emergency Mail Notification Function
+async function sendEmailNotification(detectedInfo, user) {
+  // Also Send User Info session ID if available
+  console.log("User Info:", user);
+  if (user) {
+    detectedInfo.user_email = user.email;
+    detectedInfo.user_name = user.displayName;
+  }
+  console.log("Sending emergency email notification...", detectedInfo);
+  await fetch(`${API}/api/notify/emergency_mail`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(detectedInfo),
+  });
+}
+
 function formatMessageText(text) {
   const t = String(text || "");
   const normalized = t.replace(/\r?\\n/g, "\n");
@@ -145,7 +174,9 @@ export default function Chatbot({ user }) {
         if (email) {
           try {
             const resp = await fetch(
-              `${API}/api/chat/session/active?email=${encodeURIComponent(email)}`
+              `${API}/api/chat/session/active?email=${encodeURIComponent(
+                email
+              )}`
             );
             const activeData = await resp.json();
             if (activeData && activeData.session_id) {
@@ -286,7 +317,10 @@ export default function Chatbot({ user }) {
             fetch(`${API}/api/chat/session/active`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_email: email, session_id: data.session_id }),
+              body: JSON.stringify({
+                user_email: email,
+                session_id: data.session_id,
+              }),
             }).catch(() => {});
           }
           // Use a hardcoded opener for the first message (do not call server /api/chat/init)
@@ -384,7 +418,10 @@ export default function Chatbot({ user }) {
             fetch(`${API}/api/chat/session/active`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ user_email: email, session_id: sess[0].id }),
+              body: JSON.stringify({
+                user_email: email,
+                session_id: sess[0].id,
+              }),
             }).catch(() => {});
           }
         } else {
@@ -488,12 +525,17 @@ export default function Chatbot({ user }) {
         body: JSON.stringify(payload),
       });
       const data = await r.json();
+
       // Log the server-side intent detection result so developers can inspect safety/danger flags
-      try {
-        if (data && data.detected) {
-          console.log("[Chatbot] server intent detection:", data.detected);
-        }
-      } catch (e) {}
+      // `detected` may be an object or a JSON-string depending on the server; parse defensively.
+      console.log(data.detected.danger_level);
+
+      // If the ai detects danger we send email to admin by triggering send email function
+      let flag = data.detected;
+      if (flag.danger_level == "high") {
+        await sendEmailNotification(flag, user);
+      }
+
       const replyText = data.response || "(No response)";
       const bot = {
         from: "bot",
@@ -736,16 +778,18 @@ export function ChatbotModal({
 
       <div className="relative w-full mx-4 sm:mx-auto max-w-lg bg-white border border-gray-200 rounded-xl shadow-2xl p-4 sm:p-6 max-h-[90vh] overflow-auto">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-[#263238]">Session history</h3>
+          <h3 className="text-lg font-semibold text-[#263238]">
+            Session history
+          </h3>
           <div className="flex items-center gap-2">
             <button
               className={`${btnNeutral} flex items-center gap-1 px-2 py-1 text-sm`}
               onClick={async () => {
                 if (typeof onCreate === "function") {
                   const sid = await onCreate();
-                  if (sid && typeof onOpen === 'function') onOpen(sid);
+                  if (sid && typeof onOpen === "function") onOpen(sid);
                 }
-                if (typeof onClose === 'function') onClose();
+                if (typeof onClose === "function") onClose();
               }}
             >
               <span>New</span>

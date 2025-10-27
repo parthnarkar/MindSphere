@@ -193,6 +193,43 @@ export const onAuthChange = (callback) => {
           }
         }
 
+        // Handle the common case where a newly-created account may not yet have
+        // a Firestore users document due to eventual consistency or timing.
+        // For a better UX we will treat a freshly-created auth user as signedUp
+        // (and create a minimal users doc) so the app's ProtectedRoute logic
+        // doesn't redirect them back to the landing page immediately.
+        try {
+          if (!signedUp && currentUser && currentUser.metadata) {
+            const created = currentUser.metadata.creationTime;
+            const last = currentUser.metadata.lastSignInTime;
+            // If creationTime equals lastSignInTime (first sign-in) then assume
+            // this account was just created via createUserWithEmailAndPassword
+            // or a social sign-in that creates accounts. Create a minimal user
+            // doc so downstream code that relies on user.doc exists behaves.
+            if (created && last && created === last) {
+              // best-effort write; failure should not block the auth flow
+              try {
+                const providerId = (currentUser.providerData && currentUser.providerData[0] && currentUser.providerData[0].providerId) || 'email';
+                await setDoc(doc(db, 'users', currentUser.uid), {
+                  email: currentUser.email,
+                  role: 'user',
+                  provider: providerId,
+                  createdAt: new Date(),
+                  lastLogin: new Date()
+                });
+                signedUp = true;
+                role = 'user';
+                userData = { ...(userData || {}), role: 'user', provider: providerId };
+              } catch (e) {
+                // ignore write failures - we'll still proceed but do not block
+                console.warn('onAuthChange: failed to create fallback user doc', e);
+              }
+            }
+          }
+        } catch (e) {
+          // non-fatal
+        }
+
         const userWithRole = {
           ...currentUser,
           role,

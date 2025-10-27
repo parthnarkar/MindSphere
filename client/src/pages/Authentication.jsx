@@ -5,6 +5,7 @@ import { toast } from "react-toastify";
 import bgVideo from "../assets/Login.mp4";
 import logo from "../assets/mindsphere-logo.png";
 import { useLocation } from "react-router-dom";
+import fallback from "../assets/fallback-auth-bg.png";
 
 // Accept an optional prop to default the role selector
 const AuthPage = ({ defaultRole } = {}) => {
@@ -291,7 +292,7 @@ const AuthPage = ({ defaultRole } = {}) => {
     <div className="relative min-h-screen flex items-center justify-center bg-black px-4 overflow-hidden">
       {/* Fallback image shown while video hasn't loaded or if the video fails */}
       <img
-        src={logo}
+        src={fallback}
         alt="MindSphere background"
         className={`fixed inset-0 w-full h-full object-cover pointer-events-none z-0 transition-opacity duration-700 ${
           videoLoaded && !videoError ? "opacity-0" : "opacity-100"
@@ -313,7 +314,7 @@ const AuthPage = ({ defaultRole } = {}) => {
         loop
         playsInline
         preload="auto"
-        poster={logo}
+        poster={fallback}
         onLoadedData={() => {
           setVideoLoaded(true);
           setVideoError(false);

@@ -117,6 +117,27 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
     </NavLink>
   );
 
+  // Small helper to render avatar images consistently in desktop and mobile
+  function AvatarImage({ role = 'user', size = 'w-10 h-10' }) {
+    const src = role === 'admin' ? '/admin.png' : '/user.png';
+    const onError = (e) => {
+      try {
+        e.currentTarget.onerror = null;
+        e.currentTarget.src = '/mindsphere-logo.png';
+      } catch (err) {
+        // ignore
+      }
+    };
+    return (
+      <img
+        src={src}
+        alt={role === 'admin' ? 'Admin' : 'Profile'}
+        className={`${size} object-cover`}
+        onError={onError}
+      />
+    );
+  }
+
   // Read global pageReady flag (set by App) to decide if header should be glassy or solid
   let pageReadyFlag = true;
   try { if (typeof window !== 'undefined') pageReadyFlag = !!window.__mindsphere_pageReady; } catch(e) { pageReadyFlag = true; }
@@ -177,19 +198,16 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                 {user && (
                   <button
                     onClick={() => {
-                      // Do not change route when counsellor clicks their avatar.
+                      // Navigate to appropriate profile/dashboard depending on role
                       if (user.role === "user") navigate("/profile");
-                      else if (user.role === "counsellor") return; // noop for counsellors
+                      else if (user.role === "counsellor") navigate("/CounsellorDashboard");
                       else if (user.role === "admin") navigate("/admin-dashboard");
                     }}
                     className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md hover:scale-105 transition flex-shrink-0"
                     title="Your Profile"
+                    aria-label="Your profile"
                   >
-                        {user.role === "admin" ? (
-                          <img src="/admin.png" alt="Admin" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }} />
-                        ) : (
-                          <img src="/user.png" alt="Profile" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }} />
-                        )}
+                    <AvatarImage role={user.role} size={'w-10 h-10'} />
                   </button>
                 )}
 
@@ -197,10 +215,14 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
               </div>
             </>
           ) : (
-            // Unauthenticated: always show Get Started CTA regardless of pageReadyFlag
-            <div className="flex items-center gap-2">
-              <button onClick={() => navigate('/auth')} className="px-4 py-2 rounded-md bg-[#FF8C42] text-white font-semibold hover:bg-[#e6732f] focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30">Get Started</button>
-            </div>
+            // Unauthenticated: show Get Started only when there's no optimistic
+            // fallback role in sessionStorage. This ensures the CTA is visible
+            // only for truly unauthenticated users and appears only once.
+            (!user && !fallbackRole) ? (
+              <div className="flex items-center gap-2">
+                <button onClick={() => navigate('/auth')} className="p-2 m-2 rounded-md bg-[#FF8C42] text-white font-semibold hover:bg-[#e6732f] focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30 text-sm md:text-lg">Get Started</button>
+              </div>
+            ) : null
           )}
           </div>
 
@@ -213,13 +235,9 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                 {/* If authenticated, show profile and logout in mobile menu */}
                 {user && (
                   <div className="mt-2 pt-2 border-t border-gray-100">
-                    <button onClick={() => { setMobileOpen(false); if (user.role !== 'counsellor') navigate('/profile'); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-gray-50">
+                    <button onClick={() => { setMobileOpen(false); if (user.role === 'counsellor') navigate('/CounsellorDashboard'); else navigate('/profile'); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-gray-50" aria-label="Open profile">
                       <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md">
-                        {user.role === "admin" ? (
-                          <img src="/admin.png" alt="Admin" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }} />
-                        ) : (
-                          <img src="/user.png" alt="Profile" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = '/mindsphere-logo.png'; }} />
-                        )}
+                        <AvatarImage role={user.role} size={'w-10 h-10'} />
                       </div>
                       <div className="text-sm font-medium text-[#263238]">Profile</div>
                     </button>
@@ -227,12 +245,7 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                   </div>
                 )}
 
-                {/* Unauthenticated users: show Get Started in mobile panel */}
-                {!user && (
-                  <div className="mt-2 pt-2 border-t border-gray-100">
-                    <button onClick={() => { setMobileOpen(false); navigate('/auth'); }} className="w-full px-3 py-2 rounded-md bg-[#FF8C42] text-white font-semibold hover:bg-[#e6732f]">Get Started</button>
-                  </div>
-                )}
+                
               </div>
             </div>
           )}

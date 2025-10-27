@@ -94,11 +94,14 @@ function App() {
       return;
     }
     if (autoNavRef.current) return;
-    // Only auto-navigate if the user is currently on a generic entry route
-    // (root, landing, or auth). If the user has already navigated to a
-    // specific page (e.g. /peer-to-peer), respect that and do not override it.
-    const currentPath = loc && loc.pathname ? loc.pathname.toLowerCase() : '';
-    const isEntryRoute = currentPath === '/' || currentPath === '/landing' || currentPath === '/auth';
+  // Only auto-navigate if the user is currently on a generic entry route
+  // (root or auth). We intentionally do NOT treat `/landing` as an entry
+  // route so that the landing page persists across refreshes even for
+  // authenticated users (user preference: keep landing visible until they
+  // explicitly navigate away). If the user has already navigated to a
+  // specific page (e.g. /peer-to-peer), respect that and do not override it.
+  const currentPath = loc && loc.pathname ? loc.pathname.toLowerCase() : '';
+  const isEntryRoute = currentPath === '/' || currentPath === '/auth';
     if (!isEntryRoute) {
       // user intentionally navigated to a page -> do not auto-redirect
       autoNavRef.current = true; // mark handled so we don't re-run
@@ -130,6 +133,7 @@ function App() {
     // screening (via the header 'Screening' button). Do not open the modal
     // automatically on login or page load — keep this effect inert.
   }, [user, phq9Checked, firstLoginCandidate]);
+
 
   // Keep the app-level "pageReady" flag false until the current page signals
   // that it's fully rendered by dispatching 'mindsphere:pageReady'. This prevents
