@@ -18,7 +18,7 @@ Contents
 
 ## Overview
 
-This repository contains two main parts:
+This repository contains two main parts: 
 
 - `client/` — React + Vite frontend
 - `server/` — Flask REST API (single-file entry `server/app.py` with routes mounted on a blueprint)

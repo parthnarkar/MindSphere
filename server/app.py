@@ -138,8 +138,6 @@ def health():
     return jsonify({"status": "ok", "service": "mindsphere-server"})
 
 
-# NOTE: register blueprint after all route handlers are defined (done below)
-
 
 @bp.route('/api/chat', methods=['POST', 'OPTIONS'])
 def api_chat():
@@ -221,7 +219,6 @@ def api_chat_session():
     email = request.args.get('email') or None
     sessions = dbutils.get_sessions_by_email(email)
     return jsonify({"sessions": sessions})
-
 
 
 @bp.route('/api/notify/emergency_mail', methods=['POST', 'OPTIONS'])
@@ -478,7 +475,7 @@ def api_chat_summary():
     )
 
     # Use a simple cache key to avoid repeated model calls on the same conversation
-    
+
     key_source = (email or '') + '|' + (session_id or '') + '|' + \
         hashlib.sha256(convo.encode('utf-8')).hexdigest()
     cache_entry = CHAT_SUMMARY_CACHE.get(key_source)

@@ -39,7 +39,7 @@ function App() {
       if (v) sessionStorage.setItem('phq9Open', '1');
       else sessionStorage.removeItem('phq9Open');
     } catch (e) {
-      // ignore storage errors
+      // ignore storage errors 
     }
     setShowPhq9State(v);
   };
