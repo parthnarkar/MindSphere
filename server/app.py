@@ -2250,8 +2250,5 @@ if __name__ == '__main__':
     modelutils.init_model()
     # Default to 5000 if PORT not set; bind to all interfaces for local testing
     port = int(os.getenv('PORT') or 5000)
-    print(f"Starting REST API")
-    # When running locally for debugging on Windows, the reloader can cause
-    # socket-related errors in some environments. Disable the reloader here
-    # to get stable, single-process behavior while debugging.
+    print(f"Starting REST API on port {port}")
     app.run(port=port, debug=True)

@@ -186,7 +186,7 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
           {((user && user.role) || fallbackRole) ? (
             // Authenticated or optimistic role: always show nav/profile to avoid disappearing links
             <>
-              <nav className="hidden md:flex items-center gap-2 whitespace-nowrap md:overflow-visible overflow-x-auto">
+              <nav className="hidden md:flex items-center gap-1 whitespace-nowrap md:overflow-visible overflow-x-auto">
                 {((user && user.role) || fallbackRole) === "admin"
                   ? adminNav
                   : ((user && user.role) || fallbackRole) === "counsellor"
@@ -194,7 +194,7 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                     : defaultNav}
               </nav>
 
-              <div className="hidden md:flex items-center gap-2">
+              <div className="hidden md:flex items-center gap-1">
                 {user && (
                   <button
                     onClick={() => {
