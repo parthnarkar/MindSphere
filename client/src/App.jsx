@@ -1,6 +1,6 @@
 import { Routes, Route, Navigate, Link, useLocation, useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
-import LandingPage from "./pages/LandingPage"; // Import the new landing page
+import LandingPage from "./pages/LandingPage"; 
 import AuthPage from "./pages/Authentication";
 import Chatbot from "./pages/Chatbot";
 import Booking from "./pages/Booking";
