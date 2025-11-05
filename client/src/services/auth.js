@@ -96,12 +96,12 @@ export const signInWithGoogle = async (role = "user") => {
     }
     const result = await signInWithPopup(auth, googleProvider);
     const user = result.user;
-    
+
     // First, check if this email exists in the system with "user" role
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('email', '==', user.email));
     const querySnapshot = await getDocs(q);
-    
+
     if (querySnapshot.empty) {
       // Email not found - create a new user doc for this Google account as role 'user'
       // This allows Google sign-in to create user accounts directly.
@@ -116,24 +116,24 @@ export const signInWithGoogle = async (role = "user") => {
       });
       return { user, role: 'user', signedUp: true, firstLogin: true };
     }
-    
+
     // Check if the existing user has "user" role
     const existingUserDoc = querySnapshot.docs[0];
     const existingUserData = existingUserDoc.data();
-    
+
     console.log("Google Sign-in Debug:", {
       email: user.email,
       existingRole: existingUserData.role,
       existingDocId: existingUserDoc.id,
       googleUid: user.uid
     });
-    
+
     if (existingUserData.role !== "user") {
       // Email exists but not as user role - sign out and show error
       await signOut(auth);
       throw new Error(`This email is registered as '${existingUserData.role}'. Google sign-in is only available for users. Please use email and password to sign in.`);
     }
-    
+
     // Email exists and is a user - create a new document with Google UID
     // but preserve the original user data and role
     await setDoc(doc(db, "users", user.uid), {
@@ -145,7 +145,7 @@ export const signInWithGoogle = async (role = "user") => {
       lastLogin: new Date(),
       originalUid: existingUserDoc.id // Keep reference to original account
     });
-    
+
     return { user, role: "user", signedUp: true, firstLogin: false };
   } catch (error) {
     throw error;
@@ -238,10 +238,17 @@ export const onAuthChange = (callback) => {
           provider: userData.provider || 'email'
         };
 
-        // Update sessionStorage so UI can stop using the optimistic value
+        // Update sessionStorage so UI can stop using the optimistic value.
+        // Persist 'admin' in sessionStorage until explicit logout per product requirement.
         try {
           if (role) sessionStorage.setItem('authRole', role);
-          else sessionStorage.removeItem('authRole');
+          else {
+            try {
+              const current = sessionStorage.getItem && sessionStorage.getItem('authRole');
+              if (current !== 'admin') sessionStorage.removeItem('authRole');
+              // If current === 'admin', keep it to preserve admin session until logout
+            } catch (inner) { /* ignore */ }
+          }
         } catch (e) { /* ignore */ }
 
         console.log("Auth State Change Debug:", {
@@ -255,16 +262,42 @@ export const onAuthChange = (callback) => {
         // Ensure callback is always invoked with a user-like object so app
         // doesn't remain in a perpetual loading state when Firestore fails.
         callback(userWithRole);
-      } else {
-        try { sessionStorage.removeItem('authRole'); } catch(e) { /* ignore */ }
+        } else {
+        try {
+          const current = sessionStorage.getItem && sessionStorage.getItem('authRole');
+          if (current !== 'admin') {
+            try { sessionStorage.removeItem('authRole'); } catch (e) { /* ignore */ }
+          }
+        } catch (inner) { /* ignore */ }
         callback(null);
       }
     } catch (err) {
       // Catch-all: log and ensure we call the callback to avoid stuck loaders
       console.error('onAuthChange: unexpected error', err);
-      try { sessionStorage.removeItem('authRole'); } catch(e) { /* ignore */ }
+      try {
+        const current = sessionStorage.getItem && sessionStorage.getItem('authRole');
+        if (current !== 'admin') {
+          try { sessionStorage.removeItem('authRole'); } catch (e) { /* ignore */ }
+        }
+      } catch (inner) { /* ignore */ }
       // Best-effort: deliver a null auth so the app can continue
-      try { callback(null); } catch (_) {}
+      try { callback(null); } catch (_) { }
     }
   });
+};
+
+// Lookup a user document by email and return role/provider info (best-effort).
+export const getRoleByEmail = async (email) => {
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', email));
+    const snaps = await getDocs(q);
+    if (snaps.empty) return { exists: false, role: null, provider: null, docId: null };
+    const docSnap = snaps.docs[0];
+    const data = docSnap.data() || {};
+    return { exists: true, role: data.role || null, provider: data.provider || null, docId: docSnap.id, data };
+  } catch (e) {
+    console.warn('getRoleByEmail: query failed', e);
+    return { exists: false, role: null, provider: null, docId: null, error: e };
+  }
 };

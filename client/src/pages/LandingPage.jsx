@@ -57,7 +57,9 @@ const PrimaryButton = ({ children, onClick, className = '', ...props }) => (
   <motion.button
     whileHover={{ scale: 1.03, boxShadow: "0 10px 25px rgba(255,140,66,0.4)" }}
     whileTap={{ scale: 0.97 }}
-    onClick={onClick}
+    onClick={props.disabled ? undefined : onClick}
+    aria-disabled={props.disabled ? 'true' : 'false'}
+    disabled={props.disabled}
     className={`relative overflow-hidden px-8 py-3 bg-[#FF8C42] text-white rounded-lg font-semibold shadow-lg hover:bg-[#e6732f] transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-[#FF8C42]/50 group ${className}`}
     {...props}
   >
@@ -115,11 +117,23 @@ const LandingPage = () => {
     } catch (e) {}
   }, []);
 
-  const navigateToAuthWithRole = (role = 'user') => {
-    // Only navigate to the auth page when the user is NOT authenticated.
-    // We intentionally do NOT include a role query parameter in links.
-    // If auth.currentUser exists (user is signed in), do nothing.
+  const isAdminSession = () => {
     try {
+      return sessionStorage && sessionStorage.getItem && sessionStorage.getItem('authRole') === 'admin';
+    } catch (e) {
+      return false;
+    }
+  };
+
+  const navigateToAuthWithRole = (role = 'user') => {
+    // If this browser session represents an admin (optimistic session storage),
+    // do not navigate anywhere from the landing page. This intentionally keeps
+    // landing links inert for admins per product requirement.
+    try {
+      if (isAdminSession()) return;
+      // Only navigate to the auth page when the user is NOT authenticated.
+      // We intentionally do NOT include a role query parameter in links.
+      // If auth.currentUser exists (user is signed in), do nothing.
       if (!auth || !auth.currentUser) {
         navigate('/auth');
       }
@@ -136,6 +150,8 @@ const LandingPage = () => {
 
   // Generic handler for "Service" buttons to redirect to auth with a role
   const handleServiceButtonClick = (role = 'user') => {
+    // If current browser session is an admin fallback session, do not navigate.
+    if (isAdminSession()) return;
     navigateToAuthWithRole(role);
   };
 
@@ -252,7 +268,7 @@ const LandingPage = () => {
             >
               Your intelligent companion for academic and personal growth. Experience next-gen support, from AI-driven insights to confidential human connection.
             </motion.p>
-            <PrimaryButton onClick={handleGetStarted} aria-label="Launch your future" className="text-xl cursor-pointer">
+            <PrimaryButton onClick={handleGetStarted} disabled={isAdminSession()} aria-label="Launch your future" className="text-xl cursor-pointer">
               Launch Your Future <IoRocketOutline className="inline-block ml-2 text-2xl animate-bounce-horizontal" />
             </PrimaryButton>
             <div className="mt-12 flex flex-wrap justify-center md:justify-start items-center gap-6 text-white/70">
@@ -370,7 +386,7 @@ const LandingPage = () => {
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoChatbubblesOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Anonymous Chatbot</h3>
               <p className="text-base text-[#90A4AE] mb-6">Get supportive, non-clinical help for stress, anxiety, and study issues powered by Gemini AI.</p>
-              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Chat now" className="w-full text-base"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Chat now" className="w-full text-base"> {/* Redirect to login */}
                 Chat Now <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
@@ -380,7 +396,7 @@ const LandingPage = () => {
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoClipboardOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Screening Tools</h3>
               <p className="text-base text-[#90A4AE] mb-6">Confidential PHQ-9 style assessments to help you understand your mental well-being.</p>
-              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Take assessment" className="w-full text-base"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Take assessment" className="w-full text-base"> {/* Redirect to login */}
                 Take Assessment <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
@@ -390,7 +406,7 @@ const LandingPage = () => {
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoCalendarOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Confidential Booking</h3>
               <p className="text-base text-[#90A4AE] mb-6">Easily book appointments with qualified counselors, with options for anonymous sessions.</p>
-              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Book a session" className="w-full text-base"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Book a session" className="w-full text-base"> {/* Redirect to login */}
                 Book a Session <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
@@ -400,7 +416,7 @@ const LandingPage = () => {
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoPeopleOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Peer-to-Peer Support</h3>
               <p className="text-base text-[#90A4AE] mb-6">Connect in a moderated, anonymous forum with other students for shared experiences and support.</p>
-              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Join forum" className="w-full text-base"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Join forum" className="w-full text-base"> {/* Redirect to login */}
                 Join Forum <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
@@ -410,7 +426,7 @@ const LandingPage = () => {
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoBookOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Resource Library</h3>
               <p className="text-base text-[#90A4AE] mb-6">Access a curated collection of videos, articles, books, and local support services in our website.</p>
-              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Explore resources" className="w-full text-base"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Explore resources" className="w-full text-base"> {/* Redirect to login */}
                 Explore Resources <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>
@@ -420,7 +436,7 @@ const LandingPage = () => {
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoShieldCheckmarkOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Admin & Counselor Dashboards</h3>
               <p className="text-base text-[#90A4AE] mb-6">(Internal) Tools for administrators and counselors to manage users, bookings, and monitor trends.</p>
-              <PrimaryButton onClick={() => handleServiceButtonClick('user')} aria-label="Access dashboards" className="w-full text-base"> {/* Redirect to login */}
+              <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Access dashboards" className="w-full text-base"> {/* Redirect to login */}
                 Access Dashboards <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
             </UiCard>

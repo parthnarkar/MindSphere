@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useRef } from "react";
-import { loginUser, registerUser, signInWithGoogle } from "../services/auth";
+import {
+  loginUser,
+  registerUser,
+  signInWithGoogle,
+  logoutUser,
+  getRoleByEmail,
+} from "../services/auth";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import bgVideo from "../assets/Login.mp4";
 import logo from "../assets/mindsphere-logo.png";
 import { useLocation } from "react-router-dom";
 import fallback from "../assets/fallback-auth-bg.png";
+import { API } from "../hooks/helper";
 
 // Accept an optional prop to default the role selector
 const AuthPage = ({ defaultRole } = {}) => {
@@ -18,6 +25,9 @@ const AuthPage = ({ defaultRole } = {}) => {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [roleMismatchDialogOpen, setRoleMismatchDialogOpen] = useState(false);
+  const [roleMismatchData, setRoleMismatchData] = useState(null);
+  const [adminCreds, setAdminCreds] = useState(null);
   // routing happens centrally in App.jsx once authoritative auth state arrives
   const location = useLocation();
   const [videoLoaded, setVideoLoaded] = useState(false);
@@ -42,6 +52,75 @@ const AuthPage = ({ defaultRole } = {}) => {
       } catch (e) {}
     }
   }, [isLoading]);
+
+  // Fetch admin credentials from server on mount and log them (debugging)
+  useEffect(() => {
+    const fetchAdmin = async () => {
+      try {
+        const resp = await fetch(`${API}/api/admin/login`);
+        const contentType = (
+          resp.headers.get("content-type") || ""
+        ).toLowerCase();
+
+        if (!resp.ok) {
+          // Try to extract a helpful body for debugging
+          let bodyText = "";
+          try {
+            if (contentType.includes("application/json")) {
+              const errJson = await resp.json();
+              bodyText = JSON.stringify(errJson);
+            } else {
+              bodyText = await resp.text();
+            }
+          } catch (e) {
+            bodyText = `<unreadable response: ${e.message}>`;
+          }
+          console.warn(
+            "admin login returned non-OK status",
+            resp.status,
+            bodyText
+          );
+          setAdminCreds(null);
+          return;
+        }
+
+        // Only parse JSON responses; guard against HTML (e.g. dev-server index.html)
+        if (contentType.includes("application/json")) {
+          const data = await resp.json().catch(() => ({}));
+          // Server may return one of several shapes for debugging:
+          // - an array: [ { email, id, password } ]
+          // - a minimal object: { email, id, password }
+          // - legacy wrapper: { admin: { ... } }
+          let admin = null;
+          if (Array.isArray(data) && data.length > 0) {
+            admin = data[0];
+          } else if (data && data.admin) {
+            admin = data.admin;
+          } else if (data && data.email) {
+            admin = data;
+          }
+          setAdminCreds(admin);
+          console.log("admin login fetch response", admin);
+        } else {
+          // Likely the dev server served index.html (HTML) because the backend
+          // either isn't running or the proxy is not configured. Log the body to help debug.
+          const text = await resp.text().catch(() => "<unreadable body>");
+          console.warn(
+            "admin login returned non-JSON response (likely HTML).",
+            {
+              status: resp.status,
+              contentType,
+              bodyPreview: (text || "").slice(0, 1000),
+            }
+          );
+          setAdminCreds(null);
+        }
+      } catch (err) {
+        console.error("admin login fetch failed", err);
+      }
+    };
+    fetchAdmin();
+  }, []);
 
   // helper: persist a short-lived authRole for header rendering
   function persistAuthRole(r) {
@@ -72,14 +151,184 @@ const AuthPage = ({ defaultRole } = {}) => {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError("");
+
+    // Pre-check: lookup the registered role (if any) for this email and
+    // short-circuit the sign-in if the registered role doesn't match the
+    // UI-selected role. Show a dialog immediately so the user can choose a
+    // corrective action instead of entering a loading state.
+    try {
+      if (!email || !email.trim()) {
+        setError("Please enter an email");
+        return;
+      }
+      const lookup = await getRoleByEmail(email.trim());
+      if (lookup && lookup.exists && lookup.role && lookup.role !== role) {
+        setRoleMismatchData({ registeredRole: lookup.role, email });
+        setRoleMismatchDialogOpen(true);
+        return;
+      }
+    } catch (lookupErr) {
+      // Don't block the login flow on transient lookup failures.
+      console.warn("role lookup failed, continuing to login", lookupErr);
+    }
+
+    // If admin role selected, match input against fetched adminCreds (client-side check)
+    if (role === "admin") {
+      setIsLoading(true);
+      try {
+        // If we fetched admin credentials on mount, use them for a quick client-side match
+        if (adminCreds && adminCreds.email) {
+          // Ensure we're comparing strings (defensive) and normalise casing for emails
+          const inputEmail = String(email || "")
+            .trim()
+            .toLowerCase();
+          const storedEmail = String(adminCreds.email || "")
+            .trim()
+            .toLowerCase();
+          const inputPassword = String(password || "");
+          const storedPassword = String(adminCreds.password || "");
+          if (inputEmail === storedEmail && inputPassword === storedPassword) {
+            // Successful local match
+            persistAuthRole("admin");
+            try {
+              navigate("/admin-dashboard");
+            } catch (e) {
+              // show message invalid admin credentials
+              setError("Invalid admin credentials");
+            }
+            return;
+          }
+
+          // Local creds exist but didn't match -> invalid credentials
+          setError("Invalid admin credentials");
+          setIsLoading(false);
+          return;
+        }
+
+        // Fallback: if we don't have fetched creds, call the server endpoint as before
+        const resp = await fetch(`/api/admin/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        const data = await resp.json().catch(() => ({}));
+        // Normalize response shapes: array -> first element, legacy wrapper, or minimal object
+        let adminResp = null;
+        if (Array.isArray(data) && data.length > 0) {
+          adminResp = data[0];
+        } else if (data && data.admin) {
+          adminResp = data.admin;
+        } else if (data && data.email) {
+          adminResp = data;
+        } else {
+          adminResp = null;
+        }
+        // store admin creds in state for developer inspection
+        if (adminResp) setAdminCreds(adminResp);
+        if (!resp.ok) {
+          const msg = (data && data.error) || "Invalid admin credentials";
+          setError(msg);
+          setIsLoading(false);
+          return;
+        }
+
+        // If server returned a minimal admin object, perform a final check client-side
+        if (adminResp) {
+          const inputEmail = (email || "").trim().toLowerCase();
+          const storedEmail = (adminResp.email || "").trim().toLowerCase();
+          const storedPassword = adminResp.password || "";
+          if (inputEmail === storedEmail && password === storedPassword) {
+            // Ensure a Firebase-authenticated user exists for this admin email so
+            // Firestore listeners that rely on request.auth will succeed.
+            try {
+              // Try signing in via Firebase first (existing account)
+              await loginUser(email.trim(), password);
+            } catch (fbErr) {
+              // If sign-in failed because the Firebase user doesn't exist, try
+              // to create one programmatically and set its role to 'admin'.
+              // registerUser will create the auth user and write a users/{uid}
+              // document with role='admin'. This is only executed after server
+              // verified the credentials against MongoDB.
+              try {
+                await registerUser(email.trim(), password, "admin", {
+                  name: "Admin",
+                });
+              } catch (regErr) {
+                console.error(
+                  "Failed to provision Firebase admin user",
+                  regErr
+                );
+                setError(
+                  "Admin authenticated but failed to provision Firebase account. Contact support."
+                );
+                setIsLoading(false);
+                return;
+              }
+            }
+
+            // Persist optimistic auth role for header and routing, then navigate
+            persistAuthRole("admin");
+            try {
+              navigate("/admin-dashboard");
+            } catch (e) {
+              try {
+                navigate("/landing");
+              } catch (_) {}
+            }
+            return;
+          }
+        }
+
+        setError("Invalid admin credentials");
+        setIsLoading(false);
+        return;
+      } catch (err) {
+        console.error("admin login failed", err);
+        setError("Admin login failed");
+        setIsLoading(false);
+        return;
+      }
+    }
+
     setIsLoading(true);
     const start = Date.now();
     try {
       const result = await loginUser(email, password);
 
+      // If Firebase unexpectedly returns an 'admin' role, block it here and
+      // require the dedicated MongoDB-backed admin login flow. We sign the
+      // user out to avoid leaving an admin auth state in Firebase client.
+      if (result && result.role === "admin") {
+        try {
+          await logoutUser();
+        } catch (loErr) {
+          console.warn("logout after firebase-admin-detected failed", loErr);
+        }
+        setError(
+          "Admin accounts must sign in using the Admin login. Please choose 'Admin' and use the Admin sign-in flow."
+        );
+        return;
+      }
+
       // Determine the authoritative role: prefer the role returned by the auth call,
       // fall back to the UI-selected role if none was returned.
       const acctRole = result && result.role ? result.role : role;
+
+      // Enforce role segregation: if the authoritative role exists and does not
+      // match the UI-selected role, immediately sign the user out and surface
+      // a helpful error message rather than allowing a cross-role sign-in.
+      if (result && result.role && result.role !== role) {
+        try {
+          await logoutUser();
+        } catch (loErr) {
+          // ignore logout errors but continue to block access
+          console.warn("logout after role-mismatch failed", loErr);
+        }
+        setError(
+          `Account role mismatch: this account is registered as '${result.role}'. Please sign in using the '${result.role}' option or use a different email.`
+        );
+        return;
+      }
 
       // Set firstLogin flag when applicable (keep previous behaviour for users)
       if (result && result.firstLogin && acctRole === "user") {
@@ -123,6 +372,14 @@ const AuthPage = ({ defaultRole } = {}) => {
     setIsLoading(true);
     const start = Date.now();
     try {
+      // Disallow admin signup via Firebase - admin is handled by MongoDB
+      if (role === "admin") {
+        setError(
+          "Admin account creation is not allowed via this form. Please use the Admin provisioning flow."
+        );
+        setIsLoading(false);
+        return;
+      }
       const result = await registerUser(
         email,
         password,
@@ -141,7 +398,6 @@ const AuthPage = ({ defaultRole } = {}) => {
         </div>,
         {
           position: "top-right",
-          autoClose: 4000,
           hideProgressBar: false,
           closeOnClick: true,
           pauseOnHover: true,
@@ -242,8 +498,25 @@ const AuthPage = ({ defaultRole } = {}) => {
         }
       }
 
-      // Navigate based on role returned by signInWithGoogle (usually 'user')
+      // Navigate based on role returned by signInWithGoogle (usually 'user').
+      // Additionally enforce that the account role matches the UI-selected role
+      // (the Google button is only shown for users, but double-check here).
       const gRole = result && result.role ? result.role : "user";
+
+      if (gRole !== role) {
+        // Sign the user out and show an error when roles don't match.
+        try {
+          await logoutUser();
+        } catch (loErr) {
+          console.warn("logout after google role-mismatch failed", loErr);
+        }
+        setError(
+          `Account role mismatch: this Google account is registered as '${gRole}'. Please sign in using the '${gRole}' option or use a different account.`
+        );
+        setIsLoading(false);
+        return;
+      }
+
       persistAuthRole(gRole);
       const target =
         gRole === "admin"
@@ -398,7 +671,9 @@ const AuthPage = ({ defaultRole } = {}) => {
             </h2>
 
             <div className="text-sm text-[#263238] flex items-center gap-2 flex-wrap justify-center">
-              <span className="text-center">{isLogin ? "New here?" : "Already registered?"}</span>
+              <span className="text-center">
+                {isLogin ? "New here?" : "Already registered?"}
+              </span>
 
               <button
                 disabled={isLoading}
@@ -447,19 +722,21 @@ const AuthPage = ({ defaultRole } = {}) => {
               >
                 Counsellor
               </button>
-              {/* Only show admin toggle when explicitly requested via defaultRole or when user chooses it */}
-              <button
-                disabled={isLoading}
-                type="button"
-                onClick={() => setRole("admin")}
-                className={`px-4 py-2 rounded-full text-sm font-medium cursor-pointer text-[#263238] ${
-                  role === "admin"
-                    ? "bg-white/60 text-[#263238]"
-                    : "text-[#90A4AE] hover:text-[#263238]"
-                } disabled:opacity-60`}
-              >
-                Admin
-              </button>
+              {/* Only show admin toggle when explicitly requested via defaultRole or during login mode */}
+              {(isLogin || typeof defaultRole !== "undefined") && (
+                <button
+                  disabled={isLoading}
+                  type="button"
+                  onClick={() => setRole("admin")}
+                  className={`px-4 py-2 rounded-full text-sm font-medium cursor-pointer text-[#263238] ${
+                    role === "admin"
+                      ? "bg-white/60 text-[#263238]"
+                      : "text-[#90A4AE] hover:text-[#263238]"
+                  } disabled:opacity-60`}
+                >
+                  Admin
+                </button>
+              )}
             </div>
           </div>
 
@@ -643,6 +920,55 @@ const AuthPage = ({ defaultRole } = {}) => {
           </div>
         </div>
       </div>
+      {roleMismatchDialogOpen && roleMismatchData ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setRoleMismatchDialogOpen(false)}
+          />
+          <div className="relative bg-white rounded-lg shadow-lg z-60 w-full max-w-md mx-4 p-6">
+            <h3 className="text-lg font-semibold text-[#263238] mb-2">
+              Role mismatch
+            </h3>
+            <p className="text-sm text-[#455A64] mb-4">
+              The email{" "}
+              <span className="font-medium">{roleMismatchData.email}</span> is
+              registered as
+              <span className="font-semibold">
+                {" "}
+                '{roleMismatchData.registeredRole}'
+              </span>{" "}
+              in the system.
+            </p>
+            <p className="text-sm text-[#607D8B] mb-4">
+              Please choose one of the options below.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  // Switch the role selector to the registered role so user can re-submit
+                  setRole(roleMismatchData.registeredRole);
+                  setRoleMismatchDialogOpen(false);
+                }}
+                className="px-4 py-2 rounded-md bg-[#FF8C42] text-white hover:bg-[#e6732f]"
+              >
+                {`Switch to '${roleMismatchData.registeredRole}'`}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Close dialog and let the user update the email or cancel
+                  setRoleMismatchDialogOpen(false);
+                }}
+                className="px-4 py-2 rounded-md bg-white border border-gray-200 text-[#263238] hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {/* Page-level full-screen loader removed; App.jsx provides the universal full-page loader. */}
     </div>
   );

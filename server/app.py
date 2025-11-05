@@ -1,4 +1,5 @@
 from werkzeug.exceptions import NotFound, MethodNotAllowed
+from werkzeug.security import check_password_hash
 from utils import helpers as helpers
 from utils import model as modelutils
 from utils import db as dbutils
@@ -174,18 +175,10 @@ def api_chat():
         except Exception:
             history = history or []
 
-    # 2) Topic gate: if message isn't clearly student MH-related, ask a clarifying question
-    if not helpers.looks_student_mh_related(user_message):
-        clarify_text = (
-            "[clarify] Please generate one brief clarifying question (one sentence) asking whether the user is discussing how they are feeling or a different topic. "
-            f"If helpful, reference prior turns from the conversation history.\nUser message: {user_message}"
-        )
-        prompt = helpers.build_coping_prompt(clarify_text, history=history)
-        try:
-            text = modelutils.generate_coping_text(prompt)
-        except Exception as e:
-            return jsonify({"error": "Model generation failed", "details": str(e)}), 500
-        return jsonify({"response": text, "escalate": False, "intent": detected.get('intent'), "intentConfidence": detected.get('confidence'), "detected": detected})
+    # 2) Topic gate removed: always proceed to normal flow and generate a reply
+    # (Previously this branch asked a clarifying question when the message did not
+    # appear to be student mental-health related. Per request, we skip that
+    # behavior and generate a response to any incoming message.)
 
     # 3) Normal flow: generate a coping-style reply based on detected intent
     prompt = helpers.build_coping_prompt(
@@ -1753,6 +1746,94 @@ def api_admin_metrics():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+@bp.route('/api/admin/login', methods=['GET', 'POST', 'OPTIONS'])
+def admin_login():
+    # Handle CORS preflight explicitly
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    # If GET: support optional ?email=... and return the admin credentials
+    if request.method == 'GET':
+        mongo_db = getattr(dbutils, 'mongo_db', None)
+        if mongo_db is None:
+            return jsonify({'error': 'mongo_not_configured'}), 503
+        try:
+            coll = mongo_db.get_collection('admin_credentials')
+            email = request.args.get('email') or None
+            if isinstance(email, str) and email:
+                doc = coll.find_one({'email': email})
+            else:
+                preferred_email = 'admin123456'
+                doc = coll.find_one(
+                    {'email': preferred_email}) or coll.find_one({})
+
+            if not doc:
+                return jsonify({'error': 'admin_credentials_not_found'}), 404
+
+            out = dict(doc)
+            try:
+                out['id'] = str(out.pop('_id'))
+            except Exception:
+                out['id'] = None
+
+            print('[admin_login] fetched admin credentials (GET):', {
+                  k: out.get(k) for k in ('email', 'password', 'id')})
+            # Return only the minimal admin JSON (email, id, password) as requested
+            minimal = {
+                'email': out.get('email'),
+                'id': out.get('id'),
+                'password': out.get('password')
+            }
+            # Wrap in a list as requested by the client
+            return jsonify([minimal]), 200
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({'error': 'internal_error', 'details': str(e)}), 500
+
+    # POST -> read JSON body and return admin credentials (same behavior)
+    try:
+        data = request.get_json() or {}
+    except Exception:
+        data = {}
+
+    mongo_db = getattr(dbutils, 'mongo_db', None)
+    if mongo_db is None:
+        return jsonify({'error': 'mongo_not_configured'}), 503
+
+    try:
+        coll = mongo_db.get_collection('admin_credentials')
+        email = (data.get('email') or None)
+        if isinstance(email, str) and email:
+            doc = coll.find_one({'email': email})
+        else:
+            preferred_email = 'admin123456'
+            doc = coll.find_one({'email': preferred_email}
+                                ) or coll.find_one({})
+
+        if not doc:
+            return jsonify({'error': 'admin_credentials_not_found'}), 404
+
+        out = dict(doc)
+        try:
+            out['id'] = str(out.pop('_id'))
+        except Exception:
+            out['id'] = None
+
+        print('[admin_login] fetched admin credentials (POST):', {
+              k: out.get(k) for k in ('email', 'password', 'id')})
+        # Return only the minimal admin JSON (email, id, password) as requested
+        minimal = {
+            'email': out.get('email'),
+            'id': out.get('id'),
+            'password': out.get('password')
+        }
+        # Wrap in a list as requested by the client
+        return jsonify([minimal]), 200
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({'error': 'internal_error', 'details': str(e)}), 500
 
 
 @bp.route('/api/admin/institutions', methods=['GET'])

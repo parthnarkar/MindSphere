@@ -16,6 +16,10 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
   // Consolidated role value used throughout the header (authoritative user.role preferred)
   const roleVal = (user && user.role) || fallbackRole;
 
+  // When there's no firebase `user` but an optimistic role in sessionStorage
+  // (set by the admin login flow), allow header to behave for admin sessions.
+  const isAdminFallback = !user && fallbackRole === 'admin';
+
   useEffect(() => {
     // close mobile menu on route change
     setMobileOpen(false);
@@ -190,7 +194,25 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                   </button>
                 )}
 
-                <button onClick={() => onLogout && onLogout()} className="px-3 py-1 rounded-md bg-white text-[#263238] font-semibold hover:bg-gray-50 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30">Logout</button>
+                {isAdminFallback && (
+                  <button
+                    onClick={() => navigate('/admin-dashboard')}
+                    className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md hover:scale-105 transition flex-shrink-0"
+                    title="Admin Dashboard"
+                    aria-label="Admin dashboard"
+                  >
+                    <AvatarImage role={'admin'} size={'w-10 h-10'} />
+                  </button>
+                )}
+
+                <button onClick={() => {
+                  if (onLogout) {
+                    onLogout();
+                  } else {
+                    try { sessionStorage.removeItem('authRole'); } catch(e) {}
+                    navigate('/landing');
+                  }
+                }} className="px-3 py-1 rounded-md bg-white text-[#263238] font-semibold hover:bg-gray-50 border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#FF8C42]/30">Logout</button>
               </div>
             </>
           ) : (
@@ -212,15 +234,41 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
                 {roleVal === 'admin' ? adminNav : (roleVal === 'counsellor' ? counsellorNav : defaultNav)}
 
                 {/* If authenticated, show profile and logout in mobile menu */}
-                {user && (
+                {(user || isAdminFallback) && (
                   <div className="mt-2 pt-2 border-t border-gray-100">
-                    <button onClick={() => { setMobileOpen(false); if (user.role === 'counsellor') navigate('/CounsellorDashboard'); else if (user.role === 'admin') navigate('/admin-dashboard'); else navigate('/profile'); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-gray-50" aria-label="Open profile">
+                    <button
+                      onClick={() => {
+                        setMobileOpen(false);
+                        if (user) {
+                          if (user.role === 'counsellor') navigate('/CounsellorDashboard');
+                          else if (user.role === 'admin') navigate('/admin-dashboard');
+                          else navigate('/profile');
+                        } else if (isAdminFallback) {
+                          navigate('/admin-dashboard');
+                        }
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-gray-50"
+                      aria-label="Open profile"
+                    >
                       <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md">
-                        <AvatarImage role={user.role} size={'w-10 h-10'} />
+                        <AvatarImage role={user ? user.role : 'admin'} size={'w-10 h-10'} />
                       </div>
                       <div className="text-sm font-medium text-[#263238]">Profile</div>
                     </button>
-                    <button onClick={() => { setMobileOpen(false); onLogout && onLogout(); }} className="mt-2 w-full px-3 py-2 rounded-md bg-white text-[#263238] font-semibold hover:bg-gray-50 border border-gray-200 text-sm">Logout</button>
+                    <button
+                      onClick={() => {
+                        setMobileOpen(false);
+                        if (onLogout) {
+                          onLogout();
+                        } else {
+                          try { sessionStorage.removeItem('authRole'); } catch (e) {}
+                          navigate('/landing');
+                        }
+                      }}
+                      className="mt-2 w-full px-3 py-2 rounded-md bg-white text-[#263238] font-semibold hover:bg-gray-50 border border-gray-200 text-sm"
+                    >
+                      Logout
+                    </button>
                   </div>
                 )}
 
