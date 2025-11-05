@@ -1,131 +1,242 @@
-import { useEffect, useState } from "react";
-import { API } from "../hooks/helper";
-import { db } from "../services/firebase";
-import { collection, getDocs } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { db, auth } from "../services/firebase";
+import {
+  collection,
+  query as fsQuery,
+  where,
+  onSnapshot,
+  doc,
+  getDoc,
+} from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 
 export default function AdminDashboard() {
   const [metrics, setMetrics] = useState(null);
-  const [institutions, setInstitutions] = useState([]);
-  const [selectedInstitution, setSelectedInstitution] = useState('all');
-  const [selectedCounsellorInstitution, setSelectedCounsellorInstitution] = useState('all');
-  const [selectedUserInstitution, setSelectedUserInstitution] = useState('all');
-  const [phq9Data, setPhq9Data] = useState(null);
   const [counsellors, setCounsellors] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [profiles, setProfiles] = useState([]);
   const [users, setUsers] = useState([]);
+  const [usersOnly, setUsersOnly] = useState([]);
   const [adminProfile, setAdminProfile] = useState(null);
+
+  // Real-time admin profile (kept in a separate state if we want to show
+  // live updates from Firestore). We'll use a ProfileCard component below
+  // that subscribes to the `users` collection where role === 'admin' or to
+  // a specific admin doc if available.
+
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  // UI state
+  const [query, setQuery] = useState("");
+  // institution-related filters removed per request
   const [selectedCounsellor, setSelectedCounsellor] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
-  const [showCounsellorModal, setShowCounsellorModal] = useState(false);
-  const [showUserModal, setShowUserModal] = useState(false);
+  const [selectedAppointmentCounsellor, setSelectedAppointmentCounsellor] =
+    useState("all");
+  const [genLoading, setGenLoading] = useState(false);
+  const [genError, setGenError] = useState(null);
+  const [genStatus, setGenStatus] = useState("");
+
+  // Helpers to open details and fetch related profile from `profiles/{uid}` collection
+  const openUserDetails = async (user) => {
+    // set selected user id; the users/{id} document will be subscribed to in a useEffect
+    setSelectedUser({ id: user.id });
+  };
+
+  const openCounsellorDetails = async (c) => {
+    // set selected counsellor; profile will be subscribed to in a separate useEffect
+    setSelectedCounsellor(c);
+  };
+
+  // Subscribe to users/{uid} in real-time while a user modal is open
+  useEffect(() => {
+    if (!selectedUser?.id) return;
+    const uRef = doc(db, "users", selectedUser.id);
+    const unsub = onSnapshot(
+      uRef,
+      (snap) => {
+        if (!snap.exists()) {
+          // document removed
+          setSelectedUser(null);
+          return;
+        }
+        setSelectedUser({ id: snap.id, ...snap.data() });
+      },
+      (e) => {
+        console.error("users snapshot error (user modal):", e);
+      }
+    );
+
+    return () => {
+      try {
+        unsub();
+      } catch (e) {}
+    };
+  }, [selectedUser?.id]);
+
+  // Subscribe to profiles/{uid} in real-time while a counsellor modal is open
+  useEffect(() => {
+    if (!selectedCounsellor?.id) return;
+    // subscribe to the `counsellors` collection document for this counsellor id
+    const cRef = doc(db, "counsellors", selectedCounsellor.id);
+    const unsub = onSnapshot(
+      cRef,
+      (snap) => {
+        if (!snap.exists()) {
+          // if counsellor doc not present in counsellors collection, keep existing selectedCounsellor
+          return;
+        }
+        // replace selectedCounsellor with live data from counsellors/{id}
+        setSelectedCounsellor({ id: snap.id, ...snap.data() });
+      },
+      (e) => {
+        console.error("counsellors snapshot error (counsellor):", e);
+      }
+    );
+
+    return () => {
+      try {
+        unsub();
+      } catch (e) {}
+      // when modal closes, selectedCounsellor will be cleared by caller; do not merge profile data
+    };
+  }, [selectedCounsellor?.id]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        // Fetch overall metrics
-        const metricsRes = await fetch(`${API}/api/admin`);
-        const metricsData = await metricsRes.json();
-        setMetrics(metricsData);
+    // Single realtime source: users collection. We'll derive everything from users.
+    setLoading(true);
+    setError(null);
+    let unsub = null;
 
-        // Fetch institutions data
-        const institutionsRes = await fetch(`${API}/api/admin/institutions`);
-        const institutionsData = await institutionsRes.json();
-        setInstitutions(institutionsData);
+    try {
+      unsub = onSnapshot(
+        collection(db, "users"),
+        (snap) => {
+          const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          // Keep the full snapshot but also derive a users-only list (role === 'user')
+          setUsers(all);
+          const usersList = all.filter(
+            (u) => (u.role || "").toLowerCase() === "user"
+          );
+          setUsersOnly(usersList);
 
-        // Fetch PHQ-9 data
-        const phq9Res = await fetch(`${API}/api/admin/phq9`);
-        const phq9Data = await phq9Res.json();
-        setPhq9Data(phq9Data);
+          // Derive counsellors, admins, institutions
+          const counsellorsList = all.filter(
+            (u) => (u.role || "").toLowerCase() == "counsellor"
+          );
+          const adminsList = all.filter(
+            (u) => (u.role || "").toLowerCase() == "admin"
+          );
+          setCounsellors(counsellorsList);
+          setAdminProfile(adminsList[0] || null);
 
-        // Fetch counsellors data from Firebase
-        const counsellorsSnapshot = await getDocs(collection(db, 'counsellors'));
-        const counsellorsData = counsellorsSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setCounsellors(counsellorsData);
+          // Metrics: simple derivations from users docs
+          const usersCount = usersList.length;
 
-        // Fetch users data from Firebase
-        const usersSnapshot = await getDocs(collection(db, 'users'));
-        const usersData = usersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setUsers(usersData);
+          setMetrics({
+            activeUsers: all.length,
+            usersCount: usersCount,
+            counsellorsCount: counsellorsList.length,
+          });
 
-        // Fetch admin profile
-        const adminRes = await fetch(`${API}/api/admin/profile`);
-        const adminData = await adminRes.json();
-        setAdminProfile(adminData);
+          setLoading(false);
+          try {
+            window.dispatchEvent(new CustomEvent("mindsphere:pageReady"));
+          } catch (e) {}
+        },
+        (e) => {
+          console.error("users snapshot error", e);
+          setError(e.message || String(e));
+          setLoading(false);
+        }
+      );
+    } catch (e) {
+      console.error("setup users listener error", e);
+      setError(String(e));
+      setLoading(false);
+    }
 
-        setLoading(false);
-        try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
-      } catch (error) {
-        console.error('Error fetching admin data:', error);
-        setLoading(false);
-      }
+    return () => {
+      if (typeof unsub === "function") unsub();
     };
-
-    fetchData();
   }, []);
 
-  const filteredInstitutions = selectedInstitution === 'all'
-    ? institutions
-    : institutions.filter(inst => inst.id === selectedInstitution);
+  // Subscribe to appointments collection in real-time
+  useEffect(() => {
+    let unsub = null;
+    try {
+      unsub = onSnapshot(
+        collection(db, "appointments"),
+        (snap) => {
+          const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setAppointments(arr);
+        },
+        (e) => {
+          console.error("appointments snapshot error", e);
+        }
+      );
+    } catch (e) {
+      console.error("setup appointments listener error", e);
+    }
 
-  // Filter counsellors by institution
-  const filteredCounsellors = selectedCounsellorInstitution === 'all'
-    ? counsellors
-    : counsellors.filter(counsellor => counsellor.institution === selectedCounsellorInstitution);
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, []);
 
-  // Filter users by institution
-  const filteredUsers = selectedUserInstitution === 'all'
-    ? users.filter(user => user.role === 'user')
-    : users.filter(user => user.role === 'user' && user.institution === selectedUserInstitution);
+  // Subscribe to profiles collection in real-time and keep as an array
+  useEffect(() => {
+    let unsub = null;
+    try {
+      unsub = onSnapshot(
+        collection(db, "profiles"),
+        (snap) => {
+          const arr = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setProfiles(arr);
+        },
+        (e) => {
+          console.error("profiles snapshot error", e);
+        }
+      );
+    } catch (e) {
+      console.error("setup profiles listener error", e);
+    }
 
-  // Generate 6 months of screening trends data
-  const generateScreeningTrends = () => {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'];
-    const currentDate = new Date();
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, []);
 
-    return months.map((month, index) => {
-      const monthDate = new Date(currentDate.getFullYear(), currentDate.getMonth() - (5 - index), 1);
-      const screenings = Math.floor(Math.random() * 100) + 50; // Random data between 50-150
-      const users = Math.floor(screenings * 0.7); // Users are typically 70% of screenings
+  // Derived lists
+  const visibleCounsellors = useMemo(() => {
+    // No institution filtering — show all counsellors, filter only by query
+    if (!query) return counsellors;
+    const q = query.toLowerCase();
+    return counsellors.filter(
+      (c) =>
+        (c.name || "").toLowerCase().includes(q) ||
+        (c.email || "").toLowerCase().includes(q)
+    );
+  }, [counsellors, query]);
 
-      return {
-        month,
-        screenings,
-        users,
-        date: monthDate
-      };
-    });
-  };
+  const visibleUsers = useMemo(() => {
+    const onlyUsers = usersOnly; // derived from snapshot, guaranteed role==='user'
+    // No institution filtering — filter only by query
+    if (!query) return onlyUsers;
+    const q = query.toLowerCase();
+    return onlyUsers.filter(
+      (u) =>
+        (u.name || "").toLowerCase().includes(q) ||
+        (u.email || "").toLowerCase().includes(q)
+    );
+  }, [usersOnly, query]);
 
-  const screeningTrends = generateScreeningTrends();
-
-  const openCounsellorModal = (counsellor) => {
-    setSelectedCounsellor(counsellor);
-    setShowCounsellorModal(true);
-  };
-
-  const openUserModal = (user) => {
-    setSelectedUser(user);
-    setShowUserModal(true);
-  };
-
-  const closeModals = () => {
-    setShowCounsellorModal(false);
-    setShowUserModal(false);
-    setSelectedCounsellor(null);
-    setSelectedUser(null);
-  };
-
-  // Export / report helpers
-  const download = (filename, content, mime = 'text/csv') => {
+  // Utilities
+  const download = (filename, content, mime = "application/json") => {
     const blob = new Blob([content], { type: mime });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
+    const a = document.createElement("a");
     a.href = url;
     a.download = filename;
     document.body.appendChild(a);
@@ -134,681 +245,976 @@ export default function AdminDashboard() {
     URL.revokeObjectURL(url);
   };
 
-  const exportAnalyticsReport = () => {
-    const data = { metrics, phq9Data, institutions, counsellorsCount: counsellors.length, usersCount: users.length };
-    download('analytics-report.json', JSON.stringify(data, null, 2), 'application/json');
+  // anonymize and analytics CSV exporter removed — not used in the current UI
+
+  // Per-section report exporters (CSV)
+  const exportUserReport = () => {
+    // Export full users documents (include all fields). We do NOT anonymize here
+    // because this per-section report is intended to include all stored fields.
+    const records = (visibleUsers || []).map((r) => ({ ...r }));
+    const csv = recordsToCsv(records);
+    download("user-report.csv", csv, "text/csv;charset=utf-8;");
   };
 
-  const anonymize = (obj) => {
-    const copy = { ...obj };
-    delete copy.email;
-    delete copy.phone;
-    delete copy.studentId;
-    return copy;
-  };
+  const exportCounsellorReport = async () => {
+    // For counsellors we fetch the authoritative documents from the
+    // `counsellors` collection (if present) so that exported CSV contains
+    // all fields stored there. If a counsellor doc isn't present, fall back
+    // to the derived visibleCounsellors entry.
+    try {
+      const ids = (visibleCounsellors || []).map((c) => c.id).filter(Boolean);
+      const docs = await Promise.all(
+        ids.map((id) => getDoc(doc(db, "counsellors", id)))
+      );
+      const records = docs
+        .map((snap, idx) => {
+          if (snap && snap.exists && snap.exists())
+            return { id: snap.id, ...snap.data() };
+          // fallback to the visibleCounsellors entry if no counsellor doc exists
+          return visibleCounsellors[idx] || null;
+        })
+        .filter(Boolean);
 
-  const exportAnonymizedCSV = () => {
-    const rows = [];
-    rows.push(['type', 'id', 'name', 'role', 'institution', 'createdAt'].join(','));
-    users.forEach(u => {
-      const a = anonymize(u);
-      rows.push(['user', a.id || '', `"${(a.name || '').replace(/"/g, '""')}"`, a.role || '', a.institution || '', a.createdAt ? (a.createdAt.seconds ? new Date(a.createdAt.seconds * 1000).toISOString() : new Date(a.createdAt).toISOString()) : ''].join(','));
-    });
-    counsellors.forEach(c => {
-      const a = anonymize(c);
-      rows.push(['counsellor', a.id || '', `"${(a.name || '').replace(/"/g, '""')}"`, a.specialization || '', a.institution || '', a.createdAt ? (a.createdAt.seconds ? new Date(a.createdAt.seconds * 1000).toISOString() : new Date(a.createdAt).toISOString()) : ''].join(','));
-    });
-    download('anonymized-data.csv', rows.join('\n'), 'text/csv');
-  };
-
-  const generatePhq9Report = () => {
-    if (!phq9Data) {
-      download('phq9-summary.csv', `Total Screenings,${0}\nAverage Score,N/A`, 'text/csv');
-      return;
+      const csv = recordsToCsv(records);
+      download("counsellor-report.csv", csv, "text/csv;charset=utf-8;");
+    } catch (e) {
+      console.error("exportCounsellorReport error", e);
+      // fallback: export the visible counsellors as a best-effort
+      const fallbackRecords = (visibleCounsellors || []).map((r) => ({ ...r }));
+      const csv = recordsToCsv(fallbackRecords);
+      download("counsellor-report.csv", csv, "text/csv;charset=utf-8;");
     }
-    if (!phq9Data.entries || phq9Data.entries.length === 0) {
-      const summary = `Total Screenings,${phq9Data.totalScreenings || 0}\nAverage Score,${phq9Data.averageScore || 'N/A'}`;
-      download('phq9-summary.csv', summary, 'text/csv');
-      return;
-    }
-    const rows = [['userId', 'score', 'risk', 'date'].join(',')];
-    (phq9Data.entries || []).forEach(e => {
-      rows.push([e.userId || '', e.score || '', e.risk || '', e.date || ''].join(','));
-    });
-    download('phq9-report.csv', rows.join('\n'), 'text/csv');
   };
 
-  if (loading) return <div className="px-4 sm:px-6 py-6">Loading admin dashboard...</div>;
+  // Utility: flatten nested objects into dot-notated keys
+  const flattenObject = (obj = {}, prefix = "") => {
+    const out = {};
+    Object.keys(obj || {}).forEach((k) => {
+      const val = obj[k];
+      const key = prefix ? `${prefix}.${k}` : k;
+      if (
+        val &&
+        typeof val === "object" &&
+        !Array.isArray(val) &&
+        !(val instanceof Date)
+      ) {
+        const nested = flattenObject(val, key);
+        Object.assign(out, nested);
+      } else {
+        out[key] = val;
+      }
+    });
+    return out;
+  };
+
+  // Utility: convert array of records (objects) to CSV string with header union
+  const recordsToCsv = (records = []) => {
+    if (!records || records.length === 0) return "";
+    // flatten each record and collect headers
+    const flat = records.map((r) => flattenObject(r));
+    const headerSet = new Set();
+    // ensure id, name, email, role, institution come first if present
+    const preferred = [
+      "id",
+      "name",
+      "email",
+      "role",
+      "institution",
+      "createdAt",
+    ];
+    flat.forEach((f) => Object.keys(f).forEach((k) => headerSet.add(k)));
+    const otherHeaders = Array.from(headerSet)
+      .filter((h) => !preferred.includes(h))
+      .sort();
+    const headers = [
+      ...preferred.filter((h) => headerSet.has(h)),
+      ...otherHeaders,
+    ];
+
+    const escape = (v) => {
+      if (v === null || v === undefined) return "";
+      if (typeof v === "object")
+        return `"${JSON.stringify(v).replace(/"/g, '""')}"`;
+      const s = String(v);
+      // wrap in quotes and escape inner quotes
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+
+    const rows = [headers.join(",")];
+    flat.forEach((f) => {
+      const row = headers.map((h) => {
+        // prefer nested key values, but if missing try top-level (already flattened covers both)
+        const val = f.hasOwnProperty(h) ? f[h] : "";
+        return escape(val);
+      });
+      rows.push(row.join(","));
+    });
+    return rows.join("\n");
+  };
+
+  // Utility: format field values for display in the details table
+  const formatValue = (v) => {
+    if (v === null || v === undefined) return "—";
+    if (v === "") return "—";
+    // Firestore timestamp-like object
+    if (typeof v === "object") {
+      if (v && typeof v.seconds === "number") {
+        try {
+          return new Date(v.seconds * 1000).toLocaleString();
+        } catch (e) {}
+      }
+      try {
+        return JSON.stringify(v, null, 0);
+      } catch (e) {
+        return String(v);
+      }
+    }
+    // Try to show date-like strings nicely
+    const s = String(v);
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toLocaleString();
+    return s;
+  };
+
+  // Utility: convert a dot-notated or camelCase key into a human-friendly label
+  const prettifyKey = (k) => {
+    if (!k) return "";
+    // common explicit mappings
+    const map = {
+      id: "ID",
+      createdAt: "Created At",
+      updatedAt: "Updated At",
+      studentId: "Student ID",
+      consultationFee: "Consultation Fee",
+      profile: "Profile",
+      number: "Phone",
+      lastLogin: "Last Login",
+      phone: "Phone",
+      email: "Email",
+      name: "Name",
+      specialization: "Specialization",
+    };
+
+    // If exact key mapped, return
+    if (map[k]) return map[k];
+
+    // Replace dots with spaces, then split camelCase into words
+    const withSpaces = k
+      .replace(/\./g, " ")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+      .replace(/_/g, " ");
+
+    // Capitalize each word
+    return withSpaces
+      .split(" ")
+      .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : w))
+      .join(" ");
+  };
+
+  // Small presentational subcomponents used only in this file
+  const MetricsGrid = ({ metrics }) => (
+    <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+      <Card label="Users (role=user)" value={metrics?.usersCount ?? 0} />
+      <Card
+        label="Counsellors (role=counsellor)"
+        value={metrics?.counsellorsCount ?? 0}
+      />
+    </section>
+  );
+
+  const Card = ({ label, value }) => (
+    <div className="bg-white p-4 rounded shadow flex flex-col">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xl font-bold mt-2">{value}</div>
+    </div>
+  );
+
+  const List = ({ title, items, onView, reportLabel, onReport }) => (
+    <div className="bg-white p-4 rounded shadow">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-medium">
+          {title} ({items.length})
+        </h3>
+        {reportLabel ? (
+          <button
+            onClick={onReport}
+            className="text-xs px-2 py-1 bg-blue-600 text-white rounded border border-blue-700 hover:bg-blue-700 cursor-pointer"
+          >
+            {reportLabel}
+          </button>
+        ) : null}
+      </div>
+      <ul className="space-y-2 text-sm text-gray-700">
+        {items.length > 0 ? (
+          items.slice(0, 20).map((it) => (
+            <li key={it.id} className="flex items-center justify-between">
+              <div>
+                <div className="font-medium">{it.name || it.email || "—"}</div>
+                <div className="text-xs text-gray-500">{it.email || "—"}</div>
+              </div>
+              <button
+                onClick={() => onView(it)}
+                className="text-xs text-[#FF8C42] cursor-pointer"
+              >
+                Details
+              </button>
+            </li>
+          ))
+        ) : (
+          <li className="text-gray-500">No entries found.</li>
+        )}
+      </ul>
+    </div>
+  );
+
+  // Appointments section: compute accepted/rejected counts and render a pie chart.
+  const AppointmentsSection = ({
+    appointments = [],
+    counsellors = [],
+    className = "",
+  }) => {
+    // compute counts grouped by counsellor email from the `appointments` collection docs
+    const summaryByEmail = {};
+
+    (appointments || []).forEach((a) => {
+      // Attempt several ways to get counsellor email
+      const emailFromDoc =
+        a?.counsellorEmail ||
+        a?.counsellor?.email ||
+        a?.providerEmail ||
+        a?.therapistEmail ||
+        a?.counsellor_email ||
+        null;
+
+      // Fallback: try to lookup counsellor by id present on the appointment
+      let counsellorEmail = emailFromDoc;
+      if (!counsellorEmail) {
+        const cid =
+          a?.counsellorId ||
+          a?.counsellor?.id ||
+          a?.counsellorUid ||
+          a?.counsellor_id ||
+          null;
+        if (cid) {
+          const found = counsellors.find((c) => c.id === cid || c.uid === cid);
+          counsellorEmail = found?.email || null;
+        }
+      }
+
+      if (!counsellorEmail) counsellorEmail = "unknown";
+
+      const rawStatus = (a?.status || a?.state || "").toString().toLowerCase();
+      // detect boolean flags too
+      const acceptedFlag = a?.accepted === true || a?.isAccepted === true;
+      const rejectedFlag = a?.rejected === true || a?.isRejected === true;
+
+      let status = "other";
+      if (
+        acceptedFlag ||
+        ["accepted", "confirmed", "approved", "yes"].includes(rawStatus)
+      )
+        status = "accepted";
+      else if (
+        rejectedFlag ||
+        ["rejected", "cancelled", "declined", "no"].includes(rawStatus)
+      )
+        status = "rejected";
+
+      if (!summaryByEmail[counsellorEmail])
+        summaryByEmail[counsellorEmail] = {
+          accepted: 0,
+          rejected: 0,
+          other: 0,
+        };
+      summaryByEmail[counsellorEmail][status] =
+        (summaryByEmail[counsellorEmail][status] || 0) + 1;
+    });
+
+    // Build list of counsellor emails to show in dropdown (include known counsellors even if zero)
+    const knownEmails = new Set(Object.keys(summaryByEmail));
+    (counsellors || []).forEach((c) => {
+      if (c?.email) knownEmails.add(c.email);
+    });
+    const emailOptions = Array.from(knownEmails).sort();
+
+    // compute aggregated totals depending on selector
+    const totalsForSelected = useMemo(() => {
+      if (selectedAppointmentCounsellor === "all") {
+        return Object.values(summaryByEmail).reduce(
+          (acc, v) => {
+            acc.accepted += v.accepted || 0;
+            acc.rejected += v.rejected || 0;
+            acc.other += v.other || 0;
+            return acc;
+          },
+          { accepted: 0, rejected: 0, other: 0 }
+        );
+      }
+      const s = summaryByEmail[selectedAppointmentCounsellor] || {
+        accepted: 0,
+        rejected: 0,
+        other: 0,
+      };
+      return {
+        accepted: s.accepted || 0,
+        rejected: s.rejected || 0,
+        other: s.other || 0,
+      };
+    }, [JSON.stringify(summaryByEmail), selectedAppointmentCounsellor]);
+
+    // simple name lookup by email
+    const counsellorName =
+      selectedAppointmentCounsellor === "all"
+        ? "All counsellors"
+        : counsellors.find((c) => c.email === selectedAppointmentCounsellor)
+            ?.name || selectedAppointmentCounsellor;
+
+    return (
+      <div className={`bg-white p-2 rounded shadow w-full ${className}`}>
+        <div className="flex items-center justify-between my-2">
+          <h3 className="text-sm font-medium">Appointments</h3>
+          <div className="flex items-center gap-1">
+            <select
+              className="border rounded p-1 text-sm"
+              value={selectedAppointmentCounsellor}
+              onChange={(e) => setSelectedAppointmentCounsellor(e.target.value)}
+            >
+              <option value="all">All counsellors</option>
+              {emailOptions.map((em) => (
+                <option key={em} value={em}>
+                  {em === "unknown" ? "Unknown" : em}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-col md:flex-row items-center gap-4 p-2 justify-around">
+          <div className="flex-1 max-w-[50%] relative p-2">
+            <PieChart
+              data={{
+                accepted: totalsForSelected.accepted,
+                rejected: totalsForSelected.rejected,
+                other: totalsForSelected.other,
+              }}
+            />
+          </div>
+
+          <div className="text-md text-gray-700 w-full md:w-56 flex justify-center items-start flex-col gap-2 p-2">
+            <div className="mb-2 font-medium">{counsellorName}</div>
+
+            {/* Stats with counts and percent */}
+            {(() => {
+              const t =
+                totalsForSelected.accepted +
+                totalsForSelected.rejected +
+                totalsForSelected.other;
+              const pct = (n) => (t ? `${((n / t) * 100).toFixed(1)}%` : "0%");
+              return (
+                <div className="space-y-1 mb-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block w-3 h-3 rounded-sm"
+                        style={{ backgroundColor: "#10b981" }}
+                      />
+                      <span className="font-medium">Accepted </span>
+                    </div>
+                    <div className="text-xs text-gray-600 mx-1">
+                      {totalsForSelected.accepted} •{" "}
+                      {pct(totalsForSelected.accepted)}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="inline-block w-3 h-3 rounded-sm"
+                        style={{ backgroundColor: "#ef4444" }}
+                      />
+                      <span className="font-medium">Rejected </span>
+                    </div>
+                    <div className="text-xs text-gray-600 mx-1">
+                      {totalsForSelected.rejected} •{" "}
+                      {pct(totalsForSelected.rejected)}
+                    </div>
+                  </div>
+
+                  {totalsForSelected.other > 0 && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-3 h-3 rounded-sm"
+                          style={{ backgroundColor: "#f59e0b" }}
+                        />
+                        <span className="font-medium">Other </span>
+                      </div>
+                      <div className="text-xs text-gray-600 mx-1">
+                        {totalsForSelected.other} •{" "}
+                        {pct(totalsForSelected.other)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const InstitutionData = ({ profiles = [], className = "" }) => {
+    // Group profiles by institution/school and render a selector + list.
+    const bySchool = useMemo(() => {
+      const m = {};
+      (profiles || []).forEach((p) => {
+        const raw = p?.school ?? p?.institution ?? p?.org ?? p?.organisation ?? "Unknown";
+        const school = String(raw || "Unknown").trim() || "Unknown";
+        if (!m[school]) m[school] = [];
+        m[school].push(p);
+      });
+      // produce sorted array by count desc
+      const arr = Object.entries(m).map(([school, items]) => ({ school, count: items.length, items }));
+      arr.sort((a, b) => b.count - a.count);
+      return arr;
+    }, [profiles]);
+
+    const total = bySchool.reduce((s, g) => s + g.count, 0);
+    const [selectedSchool, setSelectedSchool] = useState("all");
+
+    // filtered profiles for display (no free-text filter)
+    const displayProfiles = useMemo(() => {
+      if (selectedSchool === "all") return profiles || [];
+      const bucket = bySchool.find((b) => b.school === selectedSchool);
+      return (bucket && bucket.items) || [];
+    }, [selectedSchool, bySchool, profiles]);
+
+    if (!bySchool || bySchool.length === 0) return null;
+
+    return (
+      <div className={`bg-white p-4 rounded shadow w-full ${className}`}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-medium">Institutions</h3>
+            <div className="text-xs text-gray-500">Top institutions by user count</div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-gray-500">{total} users</div>
+            <select
+              className="border rounded px-2 py-1 text-sm bg-white"
+              value={selectedSchool}
+              onChange={(e) => setSelectedSchool(e.target.value)}
+            >
+              <option value="all">All</option>
+              {bySchool.map((b) => (
+                <option key={b.school} value={b.school}>
+                  {b.school} ({b.count})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-2 p-2">
+          {/* Left: small bars for top institutions */}
+          <div className="max-h-72 overflow-y-auto p-2">
+            <div className="space-y-3">
+              {bySchool.map(({ school, count }) => {
+                const pct = total ? (count / total) * 100 : 0;
+                return (
+                  <div key={school} className="flex items-center gap-3">
+                    <div className="w-36 text-sm text-gray-700 truncate" title={school}>{school}</div>
+                    <div className="flex-1 bg-gray-100 h-4 rounded overflow-hidden">
+                      <div className="h-4 rounded bg-gradient-to-r from-blue-500 to-blue-700" style={{ width: `${Math.max(pct, 1)}%` }} />
+                    </div>
+                    <div className="w-20 text-right text-sm text-gray-600">{count} <span className="text-xs text-gray-400">({pct.toFixed(1)}%)</span></div>
+                  </div>
+                );
+              })}
+
+              <div className="text-xs text-gray-500 mt-2">Showing {bySchool.length} institutions</div>
+            </div>
+          </div>
+
+          {/* Right: list of users (all or filtered) */}
+          <div>
+            <div className="mb-2 text-sm text-gray-600">
+              {selectedSchool === "all" ? `Showing all users` : `Users in ${selectedSchool}`}
+            </div>
+
+            <div className="max-h-72 overflow-y-auto bg-gray-50 p-2 rounded">
+              <ul className="text-sm space-y-2">
+                {displayProfiles.length > 0 ? (
+                  displayProfiles.map((p, i) => (
+                    <li key={p.id || p.email || `${selectedSchool}-${i}`} className="flex items-center justify-between px-2 py-2 bg-white rounded">
+                      <div>
+                        <div className="font-medium text-sm">{p.name || p.email || "—"}</div>
+                        <div className="text-xs text-gray-500">{p.email || "—"}</div>
+                      </div>
+                      <div className="text-xs text-gray-600">{p.school || p.institution || "Unknown"}</div>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-gray-500">No users found.</li>
+                )}
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Minimal SVG pie chart (no external deps). Expects numeric values on data.
+  function PieChart({ data = { accepted: 0, rejected: 0, other: 0 } }) {
+    const { accepted = 0, rejected = 0, other = 0 } = data || {};
+    const total = accepted + rejected + other;
+    const size = 200; // viewBox base size
+    const radius = size / 2;
+
+    const polarToCartesian = (cx, cy, r, angleDeg) => {
+      const angleRad = ((angleDeg - 90) * Math.PI) / 180.0;
+      return { x: cx + r * Math.cos(angleRad), y: cy + r * Math.sin(angleRad) };
+    };
+
+    const describeArc = (cx, cy, r, startAngle, endAngle) => {
+      if (endAngle - startAngle >= 360) {
+        // full circle
+        return `M ${cx} ${cy - r} A ${r} ${r} 0 1 1 ${cx - 0.001} ${cy - r} Z`;
+      }
+      const start = polarToCartesian(cx, cy, r, endAngle);
+      const end = polarToCartesian(cx, cy, r, startAngle);
+      const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+      return [
+        `M ${cx} ${cy}`,
+        `L ${start.x} ${start.y}`,
+        `A ${r} ${r} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`,
+        "Z",
+      ].join(" ");
+    };
+
+    if (!total) {
+      return (
+        <svg
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${size} ${size}`}
+          preserveAspectRatio="xMidYMid meet"
+        >
+          <circle cx={radius} cy={radius} r={radius} fill="#f3f4f6" />
+          <text
+            x="50%"
+            y="50%"
+            dominantBaseline="middle"
+            textAnchor="middle"
+            fontSize="10"
+            fill="#6b7280"
+          >
+            No data
+          </text>
+        </svg>
+      );
+    }
+
+    const segments = [];
+    let angleStart = 0;
+    const addSegment = (value, color) => {
+      if (!value) return;
+      const angle = (value / total) * 360;
+      const path = describeArc(
+        radius,
+        radius,
+        radius,
+        angleStart,
+        angleStart + angle
+      );
+      segments.push({ path, color });
+      angleStart += angle;
+    };
+
+    addSegment(accepted, "#10b981");
+    addSegment(rejected, "#ef4444");
+    addSegment(other, "#f59e0b");
+
+    return (
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${size} ${size}`}
+        preserveAspectRatio="xMidYMid meet"
+      >
+        <circle cx={radius} cy={radius} r={radius} fill="#fff" />
+        {segments.map((s, i) => (
+          <path
+            key={i}
+            d={s.path}
+            fill={s.color}
+            stroke="white"
+            strokeWidth="0.5"
+          />
+        ))}
+      </svg>
+    );
+  }
+
+  if (loading)
+    return <div className="px-4 sm:px-6 py-6">Loading admin dashboard...</div>;
+  if (error)
+    return (
+      <div className="p-6 text-red-600">Error loading admin data: {error}</div>
+    );
 
   return (
-    <div className="px-4 sm:px-6 py-6">
-      {/* To be worked on */}
-      {/* Action Buttons (wired) */}
-      <div className="flex flex-wrap gap-4 mb-8 w-full justify-center">
-        <button onClick={exportAnalyticsReport} className="bg-[#FF8C42] text-white px-6 py-3 rounded-lg hover:bg-[#e6732f] transition">
-          Export Analytics Report
-        </button>
-        <button onClick={exportAnonymizedCSV} className="bg-gray-700 text-white px-6 py-3 rounded-lg hover:bg-gray-800 transition">
-          Export Anonymized CSV
-        </button>
-        <button onClick={generatePhq9Report} className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">
-          Generate PHQ-9 Report
-        </button>
-      </div>
-      {/* Header with Admin Profile */}
-      <div className="mb-8">
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Admin Dashboard</h1>
-            <p className="text-gray-600">Comprehensive analytics and institutional oversight</p>
-          </div>
-          <div className="bg-white p-4 rounded-lg shadow">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-white font-bold">
-                <img src="/admin.png" className="w-10 h-10" />
-              </div>
-              <div>
-                <div className="font-semibold">{adminProfile?.name || 'Admin User'}</div>
-                <div className="text-sm text-gray-500">{adminProfile?.role || 'System Administrator'}</div>
-              </div>
-            </div>
-          </div>
+    <div className="max-w-6xl mx-auto px-4 py-26">
+      <header className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-gray-900">
+            Admin Dashboard
+          </h1>
+          <p className="text-sm text-gray-600">
+            Quick overview, filters and export
+          </p>
         </div>
-      </div>
 
-      {/* Institution Filter */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Filter by Institution:</label>
-        <select
-          value={selectedInstitution}
-          onChange={(e) => setSelectedInstitution(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8C42]"
+        {/* Real-time profile card: subscribes to Firestore and updates live */}
+        <div className="flex items-center gap-3">
+          <ProfileCard adminId={adminProfile?.id} />
+        </div>
+      </header>
+
+      <MetricsGrid metrics={metrics} />
+
+      <section className="flex items-center justify-between my-2 py-2">
+        <div className="flex gap-3 items-center">
+          <input
+            className="border rounded p-2 text-sm border-blue-400  outline-none"
+            placeholder="Search name or email"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+
+        {/* Generate Report button removed per request */}
+      </section>
+
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 my-2">
+        <List
+          title="Counsellors"
+          items={visibleCounsellors}
+          onView={(c) => openCounsellorDetails(c)}
+          reportLabel="Export CSV"
+          onReport={exportCounsellorReport}
+        />
+        <List
+          title="Users"
+          items={visibleUsers}
+          onView={(u) => openUserDetails(u)}
+          reportLabel="Export CSV"
+          onReport={exportUserReport}
+        />
+      </section>
+
+      <AppointmentsSection
+        appointments={appointments}
+        counsellors={counsellors}
+        className="my-12"
+      />
+
+      <InstitutionData profiles={profiles} className="my-12" />
+
+      {/* Counsellor Modal */}
+      {selectedCounsellor && (
+        <Modal
+          onClose={() => setSelectedCounsellor(null)}
+          headerTitle={
+            selectedCounsellor.name ||
+            selectedCounsellor.email ||
+            "Counsellor details"
+          }
+          headerSubtitle={selectedCounsellor.email || ""}
         >
-          <option value="all">All Institutions</option>
-          {institutions.map(inst => (
-            <option key={inst.id} value={inst.id}>{inst.name}</option>
-          ))}
-        </select>
-      </div>
+          <div className="text-sm text-gray-700">
+            {(() => {
+              try {
+                const flat = flattenObject(selectedCounsellor || {});
+                const keys = Object.keys(flat).sort();
 
-      {/* Overall Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-sm text-gray-500">Total Active Users</div>
-          <div className="text-3xl font-bold text-[#FF8C42]">{metrics?.activeUsers || 0}</div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-sm text-gray-500">Total Screenings</div>
-          <div className="text-3xl font-bold text-blue-600">{metrics?.screenings || 0}</div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-sm text-gray-500">Total Bookings</div>
-          <div className="text-3xl font-bold text-green-600">{metrics?.bookings || 0}</div>
-        </div>
-        <div className="bg-white p-6 rounded-lg shadow">
-          <div className="text-sm text-gray-500">Active Institutions</div>
-          <div className="text-3xl font-bold text-purple-600">{institutions.length}</div>
-        </div>
-      </div>
-
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Screening Trends Line Chart */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4">Screening Trends (6 Months)</h3>
-          <div className="h-64 flex items-end space-x-2">
-            {screeningTrends.map((data, index) => (
-              <div key={index} className="flex-1 flex flex-col items-center">
-                <div className="w-full bg-gray-200 rounded-t" style={{ height: `${(data.screenings / 200) * 200}px` }}>
-                  <div className="w-full bg-[#FF8C42] rounded-t" style={{ height: '100%' }}></div>
-                </div>
-                <div className="text-xs text-gray-600 mt-2">{data.month}</div>
-                <div className="text-xs font-medium">{data.screenings}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Risk Level Pie Chart */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4">Risk Level Distribution</h3>
-          <div className="flex items-center justify-center">
-            <div className="relative w-48 h-48">
-              <div className="absolute inset-0 rounded-full border-8 border-green-500" style={{ clipPath: 'polygon(50% 50%, 50% 0%, 100% 0%, 100% 50%)' }}></div>
-              <div className="absolute inset-0 rounded-full border-8 border-yellow-500" style={{ clipPath: 'polygon(50% 50%, 100% 50%, 100% 100%, 50% 100%)' }}></div>
-              <div className="absolute inset-0 rounded-full border-8 border-orange-500" style={{ clipPath: 'polygon(50% 50%, 50% 100%, 0% 100%, 0% 50%)' }}></div>
-              <div className="absolute inset-0 rounded-full border-8 border-red-500" style={{ clipPath: 'polygon(50% 50%, 0% 50%, 0% 0%, 50% 0%)' }}></div>
-              <div className="absolute inset-4 bg-white rounded-full flex items-center justify-center">
-                <div className="text-center">
-                  <div className="text-2xl font-bold">{phq9Data?.totalScreenings || 0}</div>
-                  <div className="text-xs text-gray-500">Total</div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 space-y-2">
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
-              <span className="text-sm">Minimal Risk: {phq9Data?.riskDistribution?.minimal || 0}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-              <span className="text-sm">Mild Risk: {phq9Data?.riskDistribution?.mild || 0}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-              <span className="text-sm">Moderate Risk: {phq9Data?.riskDistribution?.moderate || 0}</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-3 h-3 bg-red-500 rounded-full"></div>
-              <span className="text-sm">Severe Risk: {phq9Data?.riskDistribution?.severe || 0}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Counsellor Registration Cards */}
-      <div className="mb-8" id="counsellor">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">Counsellor Registration Information</h2>
-          <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Filter by Institution:</label>
-            <select
-              value={selectedCounsellorInstitution}
-              onChange={(e) => setSelectedCounsellorInstitution(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8C42] text-sm"
-            >
-              <option value="all">All Institutions</option>
-              {institutions.map(inst => (
-                <option key={inst.id} value={inst.name}>{inst.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm text-gray-600">
-            Showing {filteredCounsellors.length} counsellor{filteredCounsellors.length !== 1 ? 's' : ''}
-            {selectedCounsellorInstitution !== 'all' && ` from ${selectedCounsellorInstitution}`}
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredCounsellors.length > 0 ? filteredCounsellors.map(counsellor => (
-            <div key={counsellor.id} className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition relative">
-              <div className="flex items-center space-x-4 mb-4">
-                <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
-                  <span className="text-blue-600 font-bold">
-                    {counsellor.name ? counsellor.name.split(' ').map(n => n[0]).join('') : 'C'}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{counsellor.name || 'Counsellor'}</h3>
-                  <p className="text-sm text-gray-500">{counsellor.specialization || 'Mental Health Professional'}</p>
-                  <p className="text-sm text-gray-500">{counsellor.email || 'N/A'}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => openCounsellorModal(counsellor)}
-                className="absolute bottom-4 right-4 bg-[#FF8C42] text-white px-3 py-1.5 rounded-md hover:bg-[#e6732f] transition text-xs"
-              >
-                View Details
-              </button>
-            </div>
-          )) : (
-            <div className="col-span-full text-center py-8">
-              <p className="text-gray-500">
-                {selectedCounsellorInstitution === 'all'
-                  ? 'No counsellors found in the database.'
-                  : `No counsellors found for ${selectedCounsellorInstitution}.`}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* User Registration Cards */}
-      <div className="mb-8" id="user">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-900">User Registration Information</h2>
-          <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">Filter by Institution:</label>
-            <select
-              value={selectedUserInstitution}
-              onChange={(e) => setSelectedUserInstitution(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF8C42] text-sm"
-            >
-              <option value="all">All Institutions</option>
-              {institutions.map(inst => (
-                <option key={inst.id} value={inst.name}>{inst.name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="mb-4">
-          <p className="text-sm text-gray-600">
-            Showing {filteredUsers.length} user{filteredUsers.length !== 1 ? 's' : ''}
-            {selectedUserInstitution !== 'all' && ` from ${selectedUserInstitution}`}
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredUsers.length > 0 ? filteredUsers.map(user => (
-            <div key={user.id} className="bg-white p-6 rounded-lg shadow hover:shadow-lg transition relative">
-              <div className="flex items-center space-x-4 mb-4">
-                <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                  <span className="text-green-600 font-bold">
-                    {user.name ? user.name.split(' ').map(n => n[0]).join('') : 'U'}
-                  </span>
-                </div>
-                <div>
-                  <h3 className="font-semibold text-gray-900">{user.name || 'User'}</h3>
-                  <p className="text-sm text-gray-500">{user.role || 'Student'}</p>
-                  <p className="text-sm text-gray-500">{user.email || 'N/A'}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => openUserModal(user)}
-                className="absolute bottom-4 right-4 bg-[#FF8C42] text-white px-3 py-1.5 rounded-md hover:bg-[#e6732f] transition text-xs"
-              >
-                View Details
-              </button>
-            </div>
-          )) : (
-            <div className="col-span-full text-center py-8">
-              <p className="text-gray-500">
-                {selectedUserInstitution === 'all'
-                  ? 'No users found in the database.'
-                  : `No users found for ${selectedUserInstitution}.`}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Overview Title as requested (below User) */}
-      <div id="overview" className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900">Overview</h2>
-        <p className="text-sm text-gray-600">A consolidated overview of counsellors, users and PHQ-9 statistics.</p>
-      </div>
-
-      {/* Institution-Specific Data */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4">Institution Overview</h3>
-          <div className="space-y-3">
-            {filteredInstitutions.map(institution => (
-              <div key={institution.id} className="border-b pb-3 last:border-b-0">
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">{institution.name}</span>
-                  <span className="text-sm text-gray-500">{institution.studentCount} students</span>
-                </div>
-                <div className="text-sm text-gray-600">
-                  {institution.counsellorCount} counsellors • {institution.screeningCount} screenings
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-semibold mb-4">Counsellor Distribution</h3>
-          <div className="space-y-3">
-            {filteredInstitutions.map(institution => (
-              <div key={institution.id} className="flex justify-between items-center">
-                <span className="text-sm">{institution.name}</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-[#FF8C42] h-2 rounded-full"
-                      style={{ width: `${(institution.counsellorCount / Math.max(...institutions.map(i => i.counsellorCount))) * 100}%` }}
-                    ></div>
+                return (
+                  <div>
+                    <div className="mb-2 font-medium">All Details</div>
+                    <div className="bg-gray-50 p-3 rounded text-xs">
+                      <table className="w-full table-fixed text-left text-xs">
+                        <tbody>
+                          {keys.length > 0 ? (
+                            keys.map((k) => (
+                              <tr
+                                key={k}
+                                className="border-b odd:bg-white even:bg-gray-100"
+                              >
+                                <td className="w-1/3 py-2 pr-3 text-gray-600 align-top break-words">
+                                  {prettifyKey(k)}
+                                </td>
+                                <td className="py-2 align-top break-words">
+                                  {formatValue(flat[k])}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="text-gray-500">
+                                No fields available.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <span className="text-sm font-medium">{institution.counsellorCount}</span>
-                </div>
-              </div>
-            ))}
+                );
+              } catch (e) {
+                return (
+                  <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-[40vh] sm:max-h-[60vh]">
+                    {JSON.stringify(selectedCounsellor, null, 2)}
+                  </pre>
+                );
+              }
+            })()}
           </div>
-        </div>
-      </div>
-
-      {/* PHQ-9 Analytics */}
-      {phq9Data && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">PHQ-9 Screening Trends</h3>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Total Screenings</span>
-                <span className="font-medium">{phq9Data.totalScreenings}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">Average Score</span>
-                <span className="font-medium">{phq9Data.averageScore?.toFixed(1) || 'N/A'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-gray-600">High Risk Cases</span>
-                <span className="font-medium text-red-600">{phq9Data.highRiskCases}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-lg shadow">
-            <h3 className="text-lg font-semibold mb-4">Risk Level Distribution</h3>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Minimal Risk</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-green-500 h-2 rounded-full"
-                      style={{ width: `${(phq9Data.riskDistribution?.minimal || 0) / phq9Data.totalScreenings * 100}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-sm font-medium">{phq9Data.riskDistribution?.minimal || 0}</span>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Mild Risk</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-yellow-500 h-2 rounded-full"
-                      style={{ width: `${(phq9Data.riskDistribution?.mild || 0) / phq9Data.totalScreenings * 100}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-sm font-medium">{phq9Data.riskDistribution?.mild || 0}</span>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Moderate Risk</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-orange-500 h-2 rounded-full"
-                      style={{ width: `${(phq9Data.riskDistribution?.moderate || 0) / phq9Data.totalScreenings * 100}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-sm font-medium">{phq9Data.riskDistribution?.moderate || 0}</span>
-                </div>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm">Severe Risk</span>
-                <div className="flex items-center space-x-2">
-                  <div className="w-20 bg-gray-200 rounded-full h-2">
-                    <div
-                      className="bg-red-500 h-2 rounded-full"
-                      style={{ width: `${(phq9Data.riskDistribution?.severe || 0) / phq9Data.totalScreenings * 100}%` }}
-                    ></div>
-                  </div>
-                  <span className="text-sm font-medium">{phq9Data.riskDistribution?.severe || 0}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
-      {/* Counsellor Details Modal */}
-      {showCounsellorModal && selectedCounsellor && (
-        <div className="fixed inset-0 bg-white bg-opacity-95 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-3xl font-bold text-gray-900">Counsellor Details</h3>
-              <button
-                onClick={closeModals}
-                className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
-              >
-                ×
-              </button>
-            </div>
-            <div className="space-y-6">
-              {/* Header Section */}
-              <div className="flex items-center space-x-6 p-4 bg-gray-50 rounded-lg">
-                <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center">
-                  <span className="text-blue-600 font-bold text-2xl">
-                    {selectedCounsellor.name ? selectedCounsellor.name.split(' ').map(n => n[0]).join('') : 'C'}
-                  </span>
-                </div>
-                <div>
-                  <h4 className="text-2xl font-semibold text-gray-900">{selectedCounsellor.name || 'Counsellor'}</h4>
-                  <p className="text-lg text-gray-600">{selectedCounsellor.specialization || 'Mental Health Professional'}</p>
-                  <p className="text-sm text-gray-500">{selectedCounsellor.email || 'N/A'}</p>
-                </div>
-              </div>
+      {/* User Modal */}
+      {selectedUser && (
+        <Modal
+          onClose={() => setSelectedUser(null)}
+          headerTitle={
+            selectedUser.name || selectedUser.email || "User details"
+          }
+          headerSubtitle={selectedUser.email || ""}
+        >
+          <div className="text-sm text-gray-700">
+            {(() => {
+              try {
+                const flat = flattenObject(selectedUser || {});
+                const keys = Object.keys(flat).sort();
 
-              {/* Personal Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Personal Information</h5>
+                return (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                    <p className="text-gray-900">{selectedCounsellor.name || 'N/A'}</p>
+                    <div className="mb-2 font-medium">All fields</div>
+                    <div className="bg-gray-50 p-3 rounded text-xs">
+                      <table className="w-full table-fixed text-left text-xs">
+                        <tbody>
+                          {keys.length > 0 ? (
+                            keys.map((k) => (
+                              <tr
+                                key={k}
+                                className="border-b odd:bg-white even:bg-gray-100"
+                              >
+                                <td className="w-1/3 py-2 pr-3 text-gray-600 align-top break-words">
+                                  {prettifyKey(k)}
+                                </td>
+                                <td className="py-2 align-top break-words">
+                                  {formatValue(flat[k])}
+                                </td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="text-gray-500">
+                                No fields available.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <p className="text-gray-900">{selectedCounsellor.email || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                    <p className="text-gray-900">{selectedCounsellor.phone || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                    <p className="text-gray-900">{selectedCounsellor.address || 'N/A'}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Professional Information</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Specialization</label>
-                    <p className="text-gray-900">{selectedCounsellor.specialization || 'Mental Health Professional'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Experience</label>
-                    <p className="text-gray-900">{selectedCounsellor.experience || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Education</label>
-                    <p className="text-gray-900">{selectedCounsellor.education || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Certifications</label>
-                    <p className="text-gray-900">{selectedCounsellor.certifications || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Additional Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Account Information</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
-                    <p className="text-gray-900 font-mono text-sm">{selectedCounsellor.id || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Registration Date</label>
-                    <p className="text-gray-900">
-                      {selectedCounsellor.createdAt ?
-                        (selectedCounsellor.createdAt.seconds ?
-                          new Date(selectedCounsellor.createdAt.seconds * 1000).toLocaleDateString() :
-                          new Date(selectedCounsellor.createdAt).toLocaleDateString()) :
-                        'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Updated</label>
-                    <p className="text-gray-900">
-                      {selectedCounsellor.updatedAt ?
-                        (selectedCounsellor.updatedAt.seconds ?
-                          new Date(selectedCounsellor.updatedAt.seconds * 1000).toLocaleDateString() :
-                          new Date(selectedCounsellor.updatedAt).toLocaleDateString()) :
-                        'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                      Active
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Additional Details</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Bio</label>
-                    <p className="text-gray-900">{selectedCounsellor.bio || 'No bio available'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Languages</label>
-                    <p className="text-gray-900">{selectedCounsellor.languages || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Availability</label>
-                    <p className="text-gray-900">{selectedCounsellor.availability || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Rate</label>
-                    <p className="text-gray-900">{selectedCounsellor.rate || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+                );
+              } catch (e) {
+                return (
+                  <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-[40vh] sm:max-h-[60vh]">
+                    {JSON.stringify(selectedUser, null, 2)}
+                  </pre>
+                );
+              }
+            })()}
           </div>
-        </div>
+        </Modal>
       )}
+    </div>
+  );
+}
 
-      {/* User Details Modal */}
-      {showUserModal && selectedUser && (
-        <div className="fixed inset-0 bg-white bg-opacity-95 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-3xl font-bold text-gray-900">User Details</h3>
-              <button
-                onClick={closeModals}
-                className="text-gray-500 hover:text-gray-700 text-3xl font-bold"
-              >
-                ×
-              </button>
-            </div>
-            <div className="space-y-6">
-              {/* Header Section */}
-              <div className="flex items-center space-x-6 p-4 bg-gray-50 rounded-lg">
-                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center">
-                  <span className="text-green-600 font-bold text-2xl">
-                    {selectedUser.name ? selectedUser.name.split(' ').map(n => n[0]).join('') : 'U'}
-                  </span>
-                </div>
-                <div>
-                  <h4 className="text-2xl font-semibold text-gray-900">{selectedUser.name || 'User'}</h4>
-                  <p className="text-lg text-gray-600">{selectedUser.role || 'Student'}</p>
-                  <p className="text-sm text-gray-500">{selectedUser.email || 'N/A'}</p>
-                </div>
-              </div>
-
-              {/* Personal Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Personal Information</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                    <p className="text-gray-900">{selectedUser.name || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                    <p className="text-gray-900">{selectedUser.email || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
-                    <p className="text-gray-900">{selectedUser.phone || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Date of Birth</label>
-                    <p className="text-gray-900">{selectedUser.dateOfBirth || 'N/A'}</p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Academic Information</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Institution</label>
-                    <p className="text-gray-900">{selectedUser.institution || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Student ID</label>
-                    <p className="text-gray-900">{selectedUser.studentId || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Major/Program</label>
-                    <p className="text-gray-900">{selectedUser.major || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Year of Study</label>
-                    <p className="text-gray-900">{selectedUser.yearOfStudy || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Account Information */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Account Information</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">User ID</label>
-                    <p className="text-gray-900 font-mono text-sm">{selectedUser.id || 'N/A'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Role</label>
-                    <p className="text-gray-900">{selectedUser.role || 'User'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Registration Date</label>
-                    <p className="text-gray-900">
-                      {selectedUser.createdAt ?
-                        (selectedUser.createdAt.seconds ?
-                          new Date(selectedUser.createdAt.seconds * 1000).toLocaleDateString() :
-                          new Date(selectedUser.createdAt).toLocaleDateString()) :
-                        'N/A'}
-                    </p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Last Login</label>
-                    <p className="text-gray-900">
-                      {selectedUser.lastLogin ?
-                        (selectedUser.lastLogin.seconds ?
-                          new Date(selectedUser.lastLogin.seconds * 1000).toLocaleDateString() :
-                          new Date(selectedUser.lastLogin).toLocaleDateString()) :
-                        'N/A'}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h5 className="text-lg font-semibold text-gray-900 border-b pb-2">Activity Information</h5>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                      Active
-                    </span>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Screenings Completed</label>
-                    <p className="text-gray-900">{selectedUser.screeningsCompleted || '0'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Sessions Booked</label>
-                    <p className="text-gray-900">{selectedUser.sessionsBooked || '0'}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Emergency Contacts</label>
-                    <p className="text-gray-900">{selectedUser.emergencyContact || 'N/A'}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+function Modal({ children, onClose, headerTitle, headerSubtitle }) {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4 z-80">
+      <div className="bg-white rounded max-w-full sm:max-w-3xl md:max-w-2xl lg:max-w-4xl w-full h-[90vh] m-2 flex flex-col overflow-hidden">
+        {/* Sticky header */}
+        <div className="sticky top-0 z-10 bg-white border-b p-4">
+          <div className="text-lg font-semibold">{headerTitle}</div>
+          {headerSubtitle ? (
+            <div className="text-sm text-gray-600 mt-1">{headerSubtitle}</div>
+          ) : null}
         </div>
-      )}
+
+        {/* Scrollable body */}
+        <div className="p-4 overflow-y-auto flex-1">{children}</div>
+
+        {/* Footer with persistent close button */}
+        <div className="p-4 text-right border-t bg-white">
+          <button onClick={onClose} className="px-3 py-1 bg-gray-200 rounded">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Realtime profile card that listens to Firestore for admin user updates.
+function ProfileCard({ adminId }) {
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    let unsub = null;
+    let authUnsub = null;
+    setLoading(true);
+    setErr(null);
+
+    try {
+      authUnsub = onAuthStateChanged(auth, (user) => {
+        // If there's an authenticated user, show the auth-provided name/email immediately
+        if (user) {
+          // show the name/email the user signed in with (from Firebase Auth)
+          console.log("ProfileCard: signed in user", user);
+          setProfile({
+            id: user.uid,
+            name: user.displayName || null,
+            email: user.email || null,
+            photoURL: user.photoURL || null,
+          });
+          setLoading(false);
+
+          // also subscribe to their Firestore users/{uid} doc and use it to enrich/replace profile when available
+          if (typeof unsub === "function") unsub();
+          const d = doc(db, "users", user.uid);
+          unsub = onSnapshot(
+            d,
+            (snap) => {
+              if (!snap.exists()) {
+                // keep auth-derived profile if no Firestore document
+                return;
+              }
+              setProfile({ id: snap.id, ...snap.data() });
+            },
+            (e) => {
+              console.error("ProfileCard snapshot error:", e);
+              setErr(e.message || String(e));
+            }
+          );
+          return;
+        }
+
+        // Not signed in: use provided adminId if available
+        if (adminId) {
+          if (typeof unsub === "function") unsub();
+          const d = doc(db, "users", adminId);
+          unsub = onSnapshot(
+            d,
+            (snap) => {
+              if (!snap.exists()) {
+                setProfile(null);
+                setLoading(false);
+                return;
+              }
+              setProfile({ id: snap.id, ...snap.data() });
+              setLoading(false);
+            },
+            (e) => {
+              console.error("ProfileCard snapshot error:", e);
+              setErr(e.message || String(e));
+              setLoading(false);
+            }
+          );
+          return;
+        }
+
+        // Final fallback: find first user with role 'admin'
+        if (typeof unsub === "function") unsub();
+        const q = fsQuery(
+          collection(db, "users"),
+          where("role", "==", "admin")
+        );
+        unsub = onSnapshot(
+          q,
+          (snap) => {
+            const first = snap.docs[0];
+            if (!first) {
+              setProfile(null);
+              setLoading(false);
+              return;
+            }
+            setProfile({ id: first.id, ...first.data() });
+            setLoading(false);
+          },
+          (e) => {
+            console.error("ProfileCard query snapshot error:", e);
+            setErr(e.message || String(e));
+            setLoading(false);
+          }
+        );
+      });
+    } catch (e) {
+      setErr(String(e));
+      setLoading(false);
+    }
+
+    return () => {
+      if (typeof unsub === "function") unsub();
+      if (typeof authUnsub === "function") authUnsub();
+    };
+  }, [adminId]);
+
+  if (loading)
+    return (
+      <div className="flex items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse" />
+        <div className="text-sm">
+          <div className="w-28 h-3 bg-gray-100 rounded mb-1 animate-pulse" />
+          <div className="w-32 h-2 bg-gray-100 rounded animate-pulse" />
+        </div>
+      </div>
+    );
+
+  if (err)
+    return <div className="text-sm text-red-600">Error loading profile</div>;
+
+  if (!profile)
+    return <div className="text-sm text-gray-600">No admin profile found</div>;
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="text-right">
+        <div className="text-xs text-gray-500">Signed in as</div>
+        <div className="font-medium">{profile.name || "Admin User"}</div>
+        <div className="text-xs text-gray-400">
+          {profile.email || "admin@example.com"}
+        </div>
+      </div>
+      <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200">
+        {/* If profile has a photo URL use it, otherwise fall back to admin.png */}
+        <div
+          className="w-full h-full bg-center bg-cover"
+          style={{
+            backgroundImage: `url('${profile.photoURL || "/admin.png"}')`,
+          }}
+          aria-hidden="true"
+        />
+      </div>
     </div>
   );
 }

@@ -138,7 +138,6 @@ def health():
     return jsonify({"status": "ok", "service": "mindsphere-server"})
 
 
-
 @bp.route('/api/chat', methods=['POST', 'OPTIONS'])
 def api_chat():
     if request.method == 'OPTIONS':

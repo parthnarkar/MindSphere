@@ -13,6 +13,9 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
     if (r) fallbackRole = r;
   } catch (err) { /* ignore */ }
 
+  // Consolidated role value used throughout the header (authoritative user.role preferred)
+  const roleVal = (user && user.role) || fallbackRole;
+
   useEffect(() => {
     // close mobile menu on route change
     setMobileOpen(false);
@@ -39,51 +42,11 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
 
   const actionClass = `${navItemBase} text-[#263238] hover:text-[#FF8C42]`;
 
+  // Admin sees a single Dashboard link to keep header compact and focused
   const adminNav = (
-    <>
-      <button
-        onClick={() => navigate("/admin-dashboard")}
-        className={actionClass}
-      >
-        Dashboard
-      </button>
-      <button
-        onClick={() => {
-          navigate("/admin-dashboard");
-          setTimeout(() => {
-            const el = document.getElementById("counsellor");
-            if (el) el.scrollIntoView({ behavior: "smooth" });
-          }, 150);
-        }}
-        className={actionClass}
-      >
-        Counsellor
-      </button>
-      <button
-        onClick={() => {
-          navigate("/admin-dashboard");
-          setTimeout(() => {
-            const el = document.getElementById("user");
-            if (el) el.scrollIntoView({ behavior: "smooth" });
-          }, 150);
-        }}
-        className={actionClass}
-      >
-        User
-      </button>
-      <button
-        onClick={() => {
-          navigate("/admin-dashboard");
-          setTimeout(() => {
-            const el = document.getElementById("overview");
-            if (el) el.scrollIntoView({ behavior: "smooth" });
-          }, 150);
-        }}
-        className={actionClass}
-      >
-        Overview
-      </button>
-    </>
+    <NavLink to="/admin-dashboard" className={actionClass}>
+      Admin Dashboard
+    </NavLink>
   );
 
   const defaultNav = (
@@ -128,6 +91,21 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
         // ignore
       }
     };
+
+    // For admin, render the image as a background cover so it fills the
+    // circular profile container nicely (works better for rectangular logos).
+    if (role === 'admin') {
+      return (
+        <div
+          role="img"
+          aria-label="Admin"
+          className={`${size} bg-center bg-cover bg-no-repeat`
+          }
+          style={{ backgroundImage: `url("${src}")` }}
+        />
+      );
+    }
+
     return (
       <img
         src={src}
@@ -186,15 +164,16 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
           {((user && user.role) || fallbackRole) ? (
             // Authenticated or optimistic role: always show nav/profile to avoid disappearing links
             <>
-              <nav className="hidden md:flex items-center gap-1 whitespace-nowrap md:overflow-visible overflow-x-auto">
-                {((user && user.role) || fallbackRole) === "admin"
-                  ? adminNav
-                  : ((user && user.role) || fallbackRole) === "counsellor"
-                    ? counsellorNav
-                    : defaultNav}
-              </nav>
+                <nav className="hidden md:flex items-center gap-1 whitespace-nowrap md:overflow-visible overflow-x-auto">
+                  {/* Show adminNav when role is admin; otherwise show counsellor or default nav */}
+                  {roleVal === 'admin' ? (
+                    adminNav
+                  ) : (
+                    roleVal === 'counsellor' ? counsellorNav : defaultNav
+                  )}
+                </nav>
 
-              <div className="hidden md:flex items-center gap-1">
+                <div className="hidden md:flex items-center gap-1">
                 {user && (
                   <button
                     onClick={() => {
@@ -226,16 +205,16 @@ export default function Header({ user, onLogout, onShowPhq9 }) {
           )}
           </div>
 
-          {(mobileOpen && ((user && user.role) || fallbackRole)) && (
+          {(mobileOpen && roleVal) && (
             <div id="main-navigation" className="md:hidden border-t border-gray-200 bg-white">
               <div className="max-w-6xl mx-auto w-full box-border px-4 py-3 flex flex-col gap-2 rounded-b-2xl max-h-[70vh] sm:max-h-[60vh] overflow-y-auto">
-                {/* Links for mobile: show appropriate nav */}
-                {((user && user.role) || fallbackRole) === "admin" ? adminNav : ((user && user.role) || fallbackRole) === "counsellor" ? counsellorNav : defaultNav}
+                {/* Links for mobile: show appropriate nav; admins see adminNav */}
+                {roleVal === 'admin' ? adminNav : (roleVal === 'counsellor' ? counsellorNav : defaultNav)}
 
                 {/* If authenticated, show profile and logout in mobile menu */}
                 {user && (
                   <div className="mt-2 pt-2 border-t border-gray-100">
-                    <button onClick={() => { setMobileOpen(false); if (user.role === 'counsellor') navigate('/CounsellorDashboard'); else navigate('/profile'); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-gray-50" aria-label="Open profile">
+                    <button onClick={() => { setMobileOpen(false); if (user.role === 'counsellor') navigate('/CounsellorDashboard'); else if (user.role === 'admin') navigate('/admin-dashboard'); else navigate('/profile'); }} className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-left hover:bg-gray-50" aria-label="Open profile">
                       <div className="w-10 h-10 rounded-full overflow-hidden border-2 border-[#FF8C42] shadow-md">
                         <AvatarImage role={user.role} size={'w-10 h-10'} />
                       </div>
