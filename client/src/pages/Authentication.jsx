@@ -801,6 +801,10 @@ const AuthPage = ({ defaultRole } = {}) => {
                 type="button"
                 onClick={() => {
                   setError("");
+                  // Always reset the role selector to 'user' when switching
+                  // between Login and Sign up so the form starts in the
+                  // initial user state regardless of prior selection.
+                  setRole("user");
                   setIsLogin(!isLogin);
                 }}
                 className="px-3 py-1 rounded-md text-black font-medium cursor-pointer border border-black hover:bg-[#FF8C42] hover:text-white transition focus:outline-none focus:ring-4 focus:ring-[#FF8C42]/30 disabled:opacity-60"
