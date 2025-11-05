@@ -208,12 +208,6 @@ const CounsellorDashboard = () => {
       setUserResources(d.resourcesList || []);
       setResourceSearches(d.resourceSearches || []);
       // Log resource searches for debugging / counsellor visibility
-      try {
-        console.log(
-          "[CounsellorDashboard] resourceSearches:",
-          d.resourceSearches || []
-        );
-      } catch (err) {}
       setUserChatHistory(d.chatMsgs || []);
       // setUserPosts(d.posts || []);
       setDetailsLoading(false);
@@ -347,13 +341,6 @@ const CounsellorDashboard = () => {
       // Save to Firestore
       const docRef = doc(db, "counsellors", auth.currentUser.uid);
       // Diagnostic: log UID and keys being written to help debug permissions
-      try {
-        console.log("[CounsellorDashboard] Saving profile", {
-          uid: auth.currentUser?.uid,
-          docPath: `counsellors/${auth.currentUser?.uid}`,
-          keys: Object.keys(profileData || {}),
-        });
-      } catch (e) {}
       await setDoc(docRef, profileData, { merge: true });
 
       // Update local state
@@ -966,16 +953,7 @@ const CounsellorDashboard = () => {
                                 }
                                 // log diagnostic info to help debug permission issues
                                 const currentUid = auth.currentUser.uid;
-                                try {
-                                  console.log(
-                                    "[CounsellorDashboard] Accept click",
-                                    {
-                                      apptId: appt.id,
-                                      apptCounsellorId: appt.counsellorId,
-                                      currentUid,
-                                    }
-                                  );
-                                } catch (e) {}
+                                
                                 // ensure the current user is the assigned counsellor for this appointment
                                 if (
                                   appt.counsellorId &&
@@ -1062,16 +1040,7 @@ const CounsellorDashboard = () => {
                                   return;
                                 }
                                 const currentUid = auth.currentUser.uid;
-                                try {
-                                  console.log(
-                                    "[CounsellorDashboard] Reject click",
-                                    {
-                                      apptId: appt.id,
-                                      apptCounsellorId: appt.counsellorId,
-                                      currentUid,
-                                    }
-                                  );
-                                } catch (e) {}
+                                
                                 if (
                                   appt.counsellorId &&
                                   appt.counsellorId !== currentUid

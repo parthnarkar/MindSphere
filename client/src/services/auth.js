@@ -121,12 +121,6 @@ export const signInWithGoogle = async (role = "user") => {
     const existingUserDoc = querySnapshot.docs[0];
     const existingUserData = existingUserDoc.data();
 
-    console.log("Google Sign-in Debug:", {
-      email: user.email,
-      existingRole: existingUserData.role,
-      existingDocId: existingUserDoc.id,
-      googleUid: user.uid
-    });
 
     if (existingUserData.role !== "user") {
       // Email exists but not as user role - sign out and show error
@@ -250,14 +244,6 @@ export const onAuthChange = (callback) => {
             } catch (inner) { /* ignore */ }
           }
         } catch (e) { /* ignore */ }
-
-        console.log("Auth State Change Debug:", {
-          uid: currentUser.uid,
-          email: currentUser.email,
-          role: role,
-          provider: userData.provider || 'email',
-          signedUp: signedUp
-        });
 
         // Ensure callback is always invoked with a user-like object so app
         // doesn't remain in a perpetual loading state when Firestore fails.

@@ -46,12 +46,10 @@ function formatSessionName(s) {
 // Emergency Mail Notification Function
 async function sendEmailNotification(detectedInfo, user) {
   // Also Send User Info session ID if available
-  console.log("User Info:", user);
   if (user) {
     detectedInfo.user_email = user.email;
     detectedInfo.user_name = user.displayName;
   }
-  console.log("Sending emergency email notification...", detectedInfo);
   await fetch(`${API}/api/notify/emergency_mail`, {
     method: "POST",
     headers: {
@@ -527,8 +525,7 @@ export default function Chatbot({ user }) {
       const data = await r.json();
 
       // Log the server-side intent detection result so developers can inspect safety/danger flags
-      // `detected` may be an object or a JSON-string depending on the server; parse defensively.
-      console.log(data.detected.danger_level);
+      // `detected` may be an object or a JSON-string depending on the server; 
 
       // If the ai detects danger we send email to admin by triggering send email function
       let flag = data.detected;

@@ -1089,8 +1089,6 @@ function ProfileCard({ adminId }) {
       authUnsub = onAuthStateChanged(auth, (user) => {
         // If there's an authenticated user, show the auth-provided name/email immediately
         if (user) {
-          // show the name/email the user signed in with (from Firebase Auth)
-          console.log("ProfileCard: signed in user", user);
           setProfile({
             id: user.uid,
             name: user.displayName || null,

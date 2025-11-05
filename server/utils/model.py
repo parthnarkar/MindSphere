@@ -34,7 +34,6 @@ def init_model():
         client = genai
         model_name = os.getenv('MODEL_NAME')
     except Exception as e:
-        print('Failed to initialize Gemini client:', e)
         client = None
         model_name = None
 

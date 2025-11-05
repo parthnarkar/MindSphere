@@ -227,7 +227,6 @@ def api_send_email():
         # build_emergency_email now returns a 3-tuple: (subject, plain_text, html_text)
         subject, plain_body, html_body = helpers.build_emergency_email(data)
     except Exception as e:
-        print('[api_send_email] failed to build email body', e)
         return jsonify({'error': 'email_build_failed', 'details': str(e)}), 500
     # SMTP configuration from environment
     smtp_host = os.getenv('SMTP_HOST')
@@ -751,8 +750,7 @@ def api_summarize():
         # Log a brief summary of incoming payload for debugging (do not log secrets)
         try:
             keys = list(data.keys()) if isinstance(data, dict) else []
-            print(
-                f"[api_summarize] Received payload keys={keys} size={len(str(data))}")
+            
         except Exception:
             print("[api_summarize] Received payload (unreadable)")
         text = data.get('text')
@@ -1143,7 +1141,7 @@ def api_posts():
                                     if getattr(res, 'deleted_count', 0) > 0:
                                         return jsonify({'deleted': True}), 200
                         except Exception as e:
-                            print('[api_posts:DELETE] objectid route failed', e)
+                            return jsonify({'error': 'invalid id format'}), 400
 
                     # 2) Try delete by stored string 'id' field
                     if post_id:
@@ -1151,12 +1149,11 @@ def api_posts():
                             found = coll.find_one({'id': post_id}, {'_id': 1})
                             if found:
                                 res = coll.delete_one({'id': post_id})
-                                print(
-                                    f"[api_posts:DELETE] deleted by id field={post_id} count={getattr(res,'deleted_count',0)}")
+                                
                                 if getattr(res, 'deleted_count', 0) > 0:
                                     return jsonify({'deleted': True}), 200
                         except Exception as e:
-                            print('[api_posts:DELETE] id-field route failed', e)
+                            return jsonify({'error': 'invalid id format'}), 400
 
                     # 3) If email+createdAt provided, try matching that (createdAt may be datetime or string)
                     if email and created_at_dt is not None:
@@ -1748,7 +1745,7 @@ def api_admin_metrics():
         return jsonify({'error': str(e)}), 500
 
 
-@bp.route('/api/admin/login', methods=['GET', 'POST', 'OPTIONS'])
+@bp.route('/api/admin/login', methods=['GET', 'POST', 'PUT', 'OPTIONS'])
 def admin_login():
     # Handle CORS preflight explicitly
     if request.method == 'OPTIONS':
@@ -1778,8 +1775,6 @@ def admin_login():
             except Exception:
                 out['id'] = None
 
-            print('[admin_login] fetched admin credentials (GET):', {
-                  k: out.get(k) for k in ('email', 'password', 'id')})
             # Return only the minimal admin JSON (email, id, password) as requested
             minimal = {
                 'email': out.get('email'),
@@ -1787,6 +1782,70 @@ def admin_login():
                 'password': out.get('password')
             }
             # Wrap in a list as requested by the client
+            return jsonify([minimal]), 200
+        except Exception as e:
+            traceback.print_exc()
+            return jsonify({'error': 'internal_error', 'details': str(e)}), 500
+
+    # If PUT: update existing admin credentials in the admin_credentials collection
+    if request.method == 'PUT':
+        try:
+            data = request.get_json() or {}
+        except Exception:
+            data = {}
+
+        old_email = data.get('oldEmail') or data.get('old_email') or None
+        old_password = data.get('oldPassword') or data.get('old_password') or None
+        new_email = data.get('newEmail') or data.get('new_email') or None
+        new_password = data.get('newPassword') or data.get('new_password') or None
+
+        # Basic validation
+        if not (old_password and new_password and new_email):
+            return jsonify({'error': 'missing_fields', 'details': 'oldPassword, newEmail and newPassword are required'}), 400
+
+        mongo_db = getattr(dbutils, 'mongo_db', None)
+        if mongo_db is None:
+            return jsonify({'error': 'mongo_not_configured'}), 503
+
+        try:
+            coll = mongo_db.get_collection('admin_credentials')
+            if isinstance(old_email, str) and old_email:
+                doc = coll.find_one({'email': old_email})
+            else:
+                preferred_email = 'admin123456'
+                doc = coll.find_one({'email': preferred_email}) or coll.find_one({})
+
+            if not doc:
+                return jsonify({'error': 'admin_credentials_not_found'}), 404
+
+            # Verify the provided current password matches stored password
+            stored_password = doc.get('password') or ''
+            if str(old_password) != str(stored_password):
+                return jsonify({'error': 'invalid_current_credentials'}), 403
+
+            # Perform the update
+            try:
+                res = coll.update_one({'_id': doc.get('_id')}, {'$set': {'email': new_email, 'password': new_password}})
+            except Exception:
+                # Fallback to finding by email if _id update fails
+                res = coll.update_one({'email': doc.get('email')}, {'$set': {'email': new_email, 'password': new_password}})
+
+            # Fetch updated doc
+            updated = coll.find_one({'_id': doc.get('_id')}) or coll.find_one({'email': new_email})
+            if not updated:
+                return jsonify({'error': 'update_failed'}), 500
+
+            out = dict(updated)
+            try:
+                out['id'] = str(out.pop('_id'))
+            except Exception:
+                out['id'] = None
+
+            minimal = {
+                'email': out.get('email'),
+                'id': out.get('id'),
+                'password': out.get('password')
+            }
             return jsonify([minimal]), 200
         except Exception as e:
             traceback.print_exc()
@@ -1821,8 +1880,6 @@ def admin_login():
         except Exception:
             out['id'] = None
 
-        print('[admin_login] fetched admin credentials (POST):', {
-              k: out.get(k) for k in ('email', 'password', 'id')})
         # Return only the minimal admin JSON (email, id, password) as requested
         minimal = {
             'email': out.get('email'),
@@ -2327,5 +2384,4 @@ if __name__ == '__main__':
     modelutils.init_model()
     # Default to 5000 if PORT not set; bind to all interfaces for local testing
     port = int(os.getenv('PORT') or 5000)
-    print(f"Starting REST API on port {port}")
     app.run(port=port, debug=True)

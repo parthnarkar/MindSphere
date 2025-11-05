@@ -28,6 +28,13 @@ const AuthPage = ({ defaultRole } = {}) => {
   const [roleMismatchDialogOpen, setRoleMismatchDialogOpen] = useState(false);
   const [roleMismatchData, setRoleMismatchData] = useState(null);
   const [adminCreds, setAdminCreds] = useState(null);
+  const [changePopupOpen, setChangePopupOpen] = useState(false);
+  const [oldAdminUsername, setOldAdminUsername] = useState("");
+  const [oldAdminPassword, setOldAdminPassword] = useState("");
+  const [newAdminUsername, setNewAdminUsername] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [changeLoading, setChangeLoading] = useState(false);
+  const [changeError, setChangeError] = useState("");
   // routing happens centrally in App.jsx once authoritative auth state arrives
   const location = useLocation();
   const [videoLoaded, setVideoLoaded] = useState(false);
@@ -100,7 +107,6 @@ const AuthPage = ({ defaultRole } = {}) => {
             admin = data;
           }
           setAdminCreds(admin);
-          console.log("admin login fetch response", admin);
         } else {
           // Likely the dev server served index.html (HTML) because the backend
           // either isn't running or the proxy is not configured. Log the body to help debug.
@@ -130,6 +136,121 @@ const AuthPage = ({ defaultRole } = {}) => {
       /* ignore */
     }
   }
+
+  function showChangePopup() {
+    // Open the change-credentials popup/modal
+    setChangeError("");
+    setOldAdminUsername("");
+    setOldAdminPassword("");
+    setNewAdminUsername("");
+    setNewAdminPassword("");
+    setChangePopupOpen(true);
+  }
+
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    try {
+      if (changePopupOpen || roleMismatchDialogOpen) {
+        document.body.style.overflow = "hidden";
+      } else {
+        document.body.style.overflow = "";
+      }
+    } catch (e) {}
+    return () => {
+      try {
+        document.body.style.overflow = "";
+      } catch (e) {}
+    };
+  }, [changePopupOpen, roleMismatchDialogOpen]);
+
+  // Submit handler for changing admin credentials
+  const handleChangeCredentials = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    setChangeError("");
+
+    // Basic validation
+    if (!oldAdminUsername || !oldAdminPassword) {
+      setChangeError("Please enter current username and password");
+      return;
+    }
+    if (!newAdminUsername || !newAdminPassword) {
+      setChangeError("Please enter new username and password");
+      return;
+    }
+
+    // If we have fetched admin creds, verify the old ones match first
+    const hasLocalAdmin = adminCreds && adminCreds.email;
+    const oldUserNormalized = String(oldAdminUsername || "").trim().toLowerCase();
+    const storedUserNormalized = hasLocalAdmin
+      ? String(adminCreds.email || "").trim().toLowerCase()
+      : null;
+    const oldPass = String(oldAdminPassword || "");
+
+    if (hasLocalAdmin && (oldUserNormalized !== storedUserNormalized || oldPass !== String(adminCreds.password || ""))) {
+      setChangeError("Current admin mail and password is incorrect");
+      return;
+    }
+
+    setChangeLoading(true);
+    try {
+      // Try to update server-side if an endpoint exists. This is best-effort.
+      let serverUpdated = false;
+      try {
+        // Call the new server-side PUT handler to update admin creds in MongoDB
+        const resp = await fetch(`${API}/api/admin/login`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            oldEmail: oldAdminUsername,
+            oldPassword: oldAdminPassword,
+            newEmail: newAdminUsername,
+            newPassword: newAdminPassword,
+          }),
+        });
+
+        const data = await resp.json().catch(() => null);
+        if (resp.ok && data) {
+          // Server returns an array [ minimal ] — normalise to single object
+          let updated = null;
+          if (Array.isArray(data) && data.length > 0) updated = data[0];
+          else if (data && data.email) updated = data;
+          else if (data && data.admin) updated = data.admin;
+
+          if (updated) {
+            setAdminCreds(updated);
+          } else {
+            // If response shape unexpected, still update local copy so UI continues to work
+            setAdminCreds((prev) => ({ ...(prev || {}), email: newAdminUsername, password: newAdminPassword }));
+          }
+          serverUpdated = true;
+        } else {
+          // Server returned non-OK; surface server message when available
+          const msg = (data && (data.error || data.details)) || `Server update failed (${resp.status})`;
+          console.warn("admin update server returned non-ok", resp.status, msg);
+          setChangeError(msg);
+          serverUpdated = false;
+        }
+      } catch (srvErr) {
+        console.warn("admin update server call failed", srvErr);
+        serverUpdated = false;
+      }
+
+      if (!serverUpdated) {
+        // perform local update if old creds matched earlier
+        setAdminCreds((prev) => ({ ...(prev || {}), email: newAdminUsername, password: newAdminPassword }));
+        toast.success("Admin credentials updated locally");
+      } else {
+        toast.success("Admin credentials updated");
+      }
+
+      setChangePopupOpen(false);
+    } catch (err) {
+      console.error("change admin credentials failed", err);
+      setChangeError("Failed to change admin credentials");
+    } finally {
+      setChangeLoading(false);
+    }
+  };
 
   // Initialize role from defaultRole prop or ?role=... query param.
   // Run only when defaultRole or the query string changes; do NOT include `role` so
@@ -689,11 +810,21 @@ const AuthPage = ({ defaultRole } = {}) => {
             </div>
           </div>
 
-          <p className="my-2 text-sm text-[#263238]">
-            {isLogin
-              ? "Sign in to continue to MindSphere"
-              : "A short signup to get started"}
-          </p>
+          <div className="my-2 text-sm text-[#263238] flex items-center justify-between gap-2">
+            <div>
+              {isLogin ? "Sign in to continue to MindSphere" : "A short signup to get started"}
+            </div>
+            {/* Show change credentials link inline with the sign-in title when admin is selected and on the login view */}
+            {isLogin && role === 'admin' && (
+              <button
+                type="button"
+                onClick={() => {showChangePopup()}}
+                className="text-sm text-[#263238] underline"
+              >
+                Change Credentials
+              </button>
+            )}
+          </div>
 
           {/* Role toggle */}
           <div className="my-4">
@@ -738,6 +869,7 @@ const AuthPage = ({ defaultRole } = {}) => {
                 </button>
               )}
             </div>
+            
           </div>
 
           <form
@@ -921,29 +1053,25 @@ const AuthPage = ({ defaultRole } = {}) => {
         </div>
       </div>
       {roleMismatchDialogOpen && roleMismatchData ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-2 sm:px-4">
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setRoleMismatchDialogOpen(false)}
           />
-          <div className="relative bg-white rounded-lg shadow-lg z-60 w-full max-w-md mx-4 p-6">
-            <h3 className="text-lg font-semibold text-[#263238] mb-2">
+
+          <div className="relative bg-white rounded-lg shadow-lg z-60 w-full max-w-md sm:max-w-lg md:max-w-xl mx-auto p-4 sm:p-6 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg sm:text-xl font-semibold text-[#263238] mb-2">
               Role mismatch
             </h3>
-            <p className="text-sm text-[#455A64] mb-4">
-              The email{" "}
-              <span className="font-medium">{roleMismatchData.email}</span> is
-              registered as
-              <span className="font-semibold">
-                {" "}
-                '{roleMismatchData.registeredRole}'
-              </span>{" "}
-              in the system.
+            <p className="text-sm sm:text-base text-[#455A64] mb-3">
+              The email <span className="font-medium break-words">{roleMismatchData.email}</span> is registered as
+              <span className="font-semibold"> {' '}{roleMismatchData.registeredRole}</span> in the system.
             </p>
-            <p className="text-sm text-[#607D8B] mb-4">
+            <p className="text-sm sm:text-base text-[#607D8B] mb-4">
               Please choose one of the options below.
             </p>
-            <div className="flex items-center justify-end gap-2">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => {
@@ -951,21 +1079,109 @@ const AuthPage = ({ defaultRole } = {}) => {
                   setRole(roleMismatchData.registeredRole);
                   setRoleMismatchDialogOpen(false);
                 }}
-                className="px-4 py-2 rounded-md bg-[#FF8C42] text-white hover:bg-[#e6732f]"
+                className="w-full px-4 py-2 rounded-md bg-[#FF8C42] text-white hover:bg-[#e6732f] text-sm sm:text-base"
               >
                 {`Switch to '${roleMismatchData.registeredRole}'`}
               </button>
+
               <button
                 type="button"
                 onClick={() => {
                   // Close dialog and let the user update the email or cancel
                   setRoleMismatchDialogOpen(false);
                 }}
-                className="px-4 py-2 rounded-md bg-white border border-gray-200 text-[#263238] hover:bg-gray-50"
+                className="w-full px-4 py-2 rounded-md bg-white border border-gray-200 text-[#263238] hover:bg-gray-50 text-sm sm:text-base"
               >
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {/* Change Admin Credentials Popup */}
+      {changePopupOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setChangePopupOpen(false)}
+          />
+          <div className="relative bg-white rounded-lg shadow-lg z-60 w-full max-w-md sm:max-w-lg md:max-w-xl mx-2 p-4 max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg sm:text-xl font-semibold text-[#263238] my-2">
+              Change admin credentials
+            </h3>
+            <p className="text-sm sm:text-base text-[#455A64] my-4">
+              Enter current admin email and password, then provide new values.
+            </p>
+
+            <form onSubmit={handleChangeCredentials} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col">
+                <label className="block text-sm sm:text-base font-medium text-[#263238] mb-1">Current email</label>
+                <input
+                  value={oldAdminUsername}
+                  onChange={(e) => setOldAdminUsername(e.target.value)}
+                  className="w-full px-3 py-2 sm:px-4 sm:py-2 border border-gray-200 rounded-lg focus:outline-none text-sm sm:text-base"
+                  placeholder="current admin email"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="block text-sm sm:text-base font-medium text-[#263238] mb-1">New email</label>
+                <input
+                  value={newAdminUsername}
+                  onChange={(e) => setNewAdminUsername(e.target.value)}
+                  className="w-full px-3 py-2 sm:px-4 sm:py-2 border border-gray-200 rounded-lg focus:outline-none text-sm sm:text-base"
+                  placeholder="new admin email"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="block text-sm sm:text-base font-medium text-[#263238] mb-1">Current password</label>
+                <input
+                  value={oldAdminPassword}
+                  onChange={(e) => setOldAdminPassword(e.target.value)}
+                  type="password"
+                  className="w-full px-3 py-2 sm:px-4 sm:py-2 border border-gray-200 rounded-lg focus:outline-none text-sm sm:text-base"
+                  placeholder="current password"
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col">
+                <label className="block text-sm sm:text-base font-medium text-[#263238] mb-1">New password</label>
+                <input
+                  value={newAdminPassword}
+                  onChange={(e) => setNewAdminPassword(e.target.value)}
+                  type="password"
+                  className="w-full px-3 py-2 sm:px-4 sm:py-2 border border-gray-200 rounded-lg focus:outline-none text-sm sm:text-base"
+                  placeholder="new password"
+                  required
+                />
+              </div>
+
+              <div className="col-span-1 md:col-span-2">
+                {changeError && <div className="text-sm text-red-500 mb-2">{changeError}</div>}
+
+                <div className="flex items-center justify-end gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setChangePopupOpen(false)}
+                    className="px-4 py-2 rounded-md bg-white border border-gray-200 text-[#263238] hover:bg-gray-50"
+                    disabled={changeLoading}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={changeLoading}
+                    className="px-4 py-2 rounded-md bg-[#FF8C42] text-white hover:bg-[#e6732f]"
+                  >
+                    {changeLoading ? "Changing..." : "Change"}
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

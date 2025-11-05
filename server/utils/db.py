@@ -40,7 +40,6 @@ def init_mongo():
             except Exception:
                 pass
         except Exception as e:
-            print("Warning: could not connect to MongoDB:", e)
             mongo_client = None
     else:
         mongo_client = None
