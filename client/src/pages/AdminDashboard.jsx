@@ -730,35 +730,48 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-2 p-2">
+        <div className="flex flex-col md:flex-row gap-4 my-2 py-2">
           {/* Left: small bars for top institutions */}
-          <div>
-            <div className="text-sm text-gray-600 mb-2">
+          <div className="flex-1 md:w-1/2">
+            <div className="text-sm text-gray-600 my-2">
                 Showing {bySchool.length} institutions
               </div>
-            <div className="space-y-3 p-2">
+            <div className="space-y-2 p-2">
               
               {bySchool.map(({ school, count }) => {
                 const pct = total ? (count / total) * 100 : 0;
                 return (
-                  <div key={school} className="flex items-center gap-3">
+                  // Flexbox row: reorder for mobile vs desktop using flex order
+                  <div
+                    key={school}
+                    className="flex flex-col sm:flex-row items-center gap-2"
+                  >
+                    {/* Name: top on mobile, left on desktop */}
                     <div
-                      className="w-36 text-sm text-gray-700 truncate"
+                      className="order-1 w-full sm:w-20 text-sm text-gray-700 truncate"
                       title={school}
                     >
                       {school}
                     </div>
-                    <div className="flex-1 bg-gray-100 h-4 rounded overflow-hidden">
+
+                    {/* Count: shown next to name on mobile, right on desktop */}
+                    <div className="order-2 w-full sm:w-24 text-sm text-gray-600 text-right">
+                      <div className="flex justify-between sm:justify-end">
+                        <div className="font-medium">{count}</div>
+                        <div className="text-xs text-gray-400 sm:ml-2">({pct.toFixed(1)}%)</div>
+                      </div>
+                    </div>
+
+                    {/* Bar: placed below name/count on mobile (order-3) and between name and count on desktop (sm:order-2) */}
+                    <div
+                      className="order-3 w-full sm:order-2 sm:flex-1 bg-gray-100 h-4 rounded overflow-hidden"
+                      role="img"
+                      aria-label={`${count} users — ${pct.toFixed(1)} percent`}
+                    >
                       <div
                         className="h-4 rounded bg-gradient-to-r from-blue-500 to-blue-700"
                         style={{ width: `${Math.max(pct, 1)}%` }}
                       />
-                    </div>
-                    <div className="w-20 text-right text-sm text-gray-600">
-                      {count}{" "}
-                      <span className="text-xs text-gray-400">
-                        ({pct.toFixed(1)}%)
-                      </span>
                     </div>
                   </div>
                 );
@@ -769,15 +782,15 @@ export default function AdminDashboard() {
           </div>
 
           {/* Right: list of users (all or filtered) */}
-          <div>
+          <div className="flex-1 md:w-1/2">
             <div className="mb-2 text-sm text-gray-600">
               {selectedSchool === "all"
                 ? `Showing all users`
                 : `Users in ${selectedSchool}`}
             </div>
-
             <div className="bg-gray-50 p-2 rounded">
-              <ul className="text-sm space-y-2">
+              <div>
+                <ul className="text-sm space-y-2">
                 {displayProfiles.length > 0 ? (
                   displayProfiles.map((p, i) => {
                     const id = p.id || p.email || `${selectedSchool}-${i}`;
@@ -870,11 +883,11 @@ export default function AdminDashboard() {
                 ) : (
                   <li className="text-gray-500">No users found.</li>
                 )}
-              </ul>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
-        {/* Inline slider/drawer handles profile details per item (no modal) */}
       </div>
     );
   };
