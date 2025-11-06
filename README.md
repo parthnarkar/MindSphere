@@ -188,7 +188,7 @@ AI & model usage considerations
 4. Open a PR with a clear description and testing notes
 
 
-*Built with ❤️ by Team CollabCoders*
+*Built with ❤️ by Team-CollabCoders*
 
 
 
