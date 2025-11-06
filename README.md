@@ -1,13 +1,29 @@
-# MindSphere — README
+# MindSphere
 
-This repository is a research/prototype digital mental-health support system designed for student-facing workflows. It includes:
+[![React](https://img.shields.io/badge/React-19.1.1-blue.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-7.1.7-yellow.svg)](https://vitejs.dev/)
+[![Flask](https://img.shields.io/badge/Flask-2.3+-lightgrey.svg)](https://flask.palletsprojects.com/)
+[![MongoDB](https://img.shields.io/badge/Database-MongoDB-green.svg)](https://www.mongodb.com/)
+[![Firebase](https://img.shields.io/badge/Auth-Firebase-orange.svg)](https://firebase.google.com/)
+[![Tailwind](https://img.shields.io/badge/TailwindCSS-4.1.13-teal.svg)](https://tailwindcss.com/)
+
+MindSphere is a research/prototype digital mental-health support system focused on student-facing workflows. It combines a modern frontend with a lightweight backend to demonstrate chat-based support, screenings, bookings, resources and forum features.
+
+![MindSphere Landing Page](client/public/Hero%20Section%20Banner.png)
+
+## Demo & Slides
+
+- **YouTube Demo**: <a href="https://youtu.be/nXVGe-jcuzI" target="_blank">**Watch Here**</a>  
+- **Project PPT**: <a href="https://drive.google.com/file/d/1mNmLvwJcKor3MNabqPwNcCbr2fcVI5Jx/view?usp=sharing" target="_blank">**Click Here**</a>
+ 
+## Contents
 
 - `client/` — React + Vite frontend (UI: chat, screening, bookings, resources, forum, admin pages)
 - `server/` — Flask backend (REST API + optional integrations with MongoDB and Google Generative AI)
 
 IMPORTANT: This project is a prototype. It is NOT production-ready. Do not use with real sensitive data or PII without adding proper security, privacy, and clinical governance.
 
-This ultimate README consolidates setup, development, testing, deployment, API reference, and operational guidance.
+This README consolidates setup, development, testing, deployment, API reference, and operational guidance.
 
 ---
 
@@ -79,37 +95,18 @@ Security note: Do not store private secrets in client-side `VITE_` variables for
 
 Base: http://localhost:5000
 
-- GET  /
-	- Health check: returns { status: 'ok' }
-
-- POST /api/chat
-	- Body: { message: string, session_id?: string, history?: [] }
-	- Returns: { response: string, escalate: bool, intent: str, intentConfidence: float }
-	- Notes: Calls `modelutils.generate_coping_text(prompt)`. The server does not forcibly truncate model output — provider/model limits still apply.
-
-- GET/POST /api/chat/session
-	- Create or list chat sessions
-
-- GET/POST /api/chat/session/<session_id>/messages
-	- Read or append messages to a session
-
-- POST /api/notify/emergency_mail
-	- Builds and sends an emergency email (multipart) using SMTP settings
-
-- GET/POST /api/phq9
-	- Submit or list PHQ-9 screening forms
-
-- GET /api/phq9/<email>
-	- Get latest PHQ-9 for a user email
-
-- GET/POST /api/posts
-	- Forum post CRUD (in-memory or Mongo depending on configuration)
-
-- GET/POST /api/resources
-	- Resource CRUD used by Resources page
-
-- GET /api/admin
-	- Returns basic admin metrics (active users, screenings, bookings)
+| Method(s) | Path | Description | Request / Response / Notes |
+|---|---|---|---|
+| GET | / | Health check | Returns: `{ status: 'ok' }` |
+| POST | /api/chat | Chat message handler: generate a response from the model | Request body: `{ message: string, session_id?: string, history?: [] }` — Response: `{ response: string, escalate: bool, intent: string, intentConfidence: number }`. Notes: calls `modelutils.generate_coping_text(prompt)`; server does not forcibly truncate model output (provider/model limits still apply).
+| GET, POST | /api/chat/session | Create or list chat sessions | GET: list sessions. POST: create a new session (returns session id).
+| GET, POST | /api/chat/session/<session_id>/messages | Read or append messages to a session | GET: list messages for session. POST: append a message to the session.
+| POST | /api/notify/emergency_mail | Build and send an emergency notification email | Constructs a multipart plain+HTML message and sends via configured SMTP settings.
+| GET, POST | /api/phq9 | Submit or list PHQ-9 screening forms | POST to submit a screening; GET to list stored screenings (in-memory or Mongo depending on config).
+| GET | /api/phq9/<email> | Retrieve latest PHQ-9 for a user | Returns the most recent PHQ-9 entry for the provided email (if available).
+| GET, POST | /api/posts | Forum post CRUD | Create, list and manage forum posts. Storage: in-memory or Mongo depending on configuration.
+| GET, POST | /api/resources | Resource CRUD used by the Resources page | Manage learning / help resources used by the frontend.
+| GET | /api/admin | Basic admin metrics | Returns counts/metrics such as active users, screenings and bookings.
 
 For full request/response shapes and optional query params, read handler docstrings in `server/app.py` and the helper modules.
 
@@ -177,14 +174,14 @@ AI & model usage considerations
 
 ## Contributors
 
-The primary contributors to this project are :- 
+| [![](https://github.com/parthnarkar.png?size=100)](https://github.com/parthnarkar) | [![](https://github.com/tanish-jain-225.png?size=100)](https://github.com/tanish-jain-225) | [![](https://github.com/architchitte.png?size=100)](https://github.com/architchitte) |
+| :--------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: |
+| [**Parth Narkar**](https://github.com/parthnarkar) | [**Tanish Sanghvi**](https://github.com/tanish-jain-225) | [**Archit Chitte**](https://github.com/architchitte) |
 
-- Tanish Sanghvi - <tanishjain020205@gmail.com> - [@tanish-jain-225](https://github.com/tanish-jain-225)
-- Parth Narkar - <parthnarkarofficial@gmail.com> - [@parthnarkar](https://github.com/parthnarkar)
-- Archit Chitte - <architchitte05@gmail.com> - [@architchitte](https://github.com/architchitte)
-- Anshul Patil - <reach2anshulp@gmail.com> - [@Anshul-patil10](https://github.com/Anshul-patil10)
-- Harshvardhan Patil - <harshvardhan.work.11@gmail.com> - [@harshpatil110](https://github.com/harshpatil110)
-- Gowri Nair - <gowriknair2005@gmail.com> - [@Achu80](https://github.com/Achu80)
+| [![](https://github.com/Anshul-patil10.png?size=100)](https://github.com/Anshul-patil10) | [![](https://github.com/harshpatil110.png?size=100)](https://github.com/harshpatil110) | [![](https://github.com/Achu80.png?size=100)](https://github.com/Achu80) |
+| :--------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: | :----------------------------------------------------------------------------: |
+| [**Anshul Patil**](https://github.com/Anshul-patil10) | [**Harshvardhan Patil**](https://github.com/harshpatil110) | [**Gowri Nair**](https://github.com/Achu80) |
+
 
 ## For Contributing
 
@@ -192,3 +189,9 @@ The primary contributors to this project are :-
 2. Run local dev (client + server)
 3. Add tests where useful and update docs
 4. Open a PR with a clear description and testing notes
+
+
+*Built with ❤️ by Team CollabCoders*
+
+
+
