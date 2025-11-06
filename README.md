@@ -135,31 +135,6 @@ Suggested CI (GitHub Actions):
 - Install server deps, run `python server/ultimate_server_test.py` as a smoke test
 - Install client deps, run `npm ci && npm run build` to validate frontend builds
 
-Example CI steps (pseudo):
-
-```yaml
-steps:
-	- uses: actions/checkout@v4
-	- name: Setup Python
-		uses: actions/setup-python@v4
-		with: { python-version: '3.11' }
-	- name: Server deps & tests
-		run: |
-			cd server
-			python -m venv .venv
-			. .venv/bin/activate
-			pip install -r requirements.txt
-			python .\ultimate_server_test.py
-		env:
-			MONGO_URI: ${{ secrets.MONGO_URI }}
-			GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-	- name: Client build
-		run: |
-			cd client
-			npm ci
-			npm run build
-```
-
 ## Deployment notes
 
 Vercel (serverless)
@@ -202,17 +177,16 @@ AI & model usage considerations
 
 ## Contributors
 
-Thank you to everyone who contributed to this project. The primary contributors (from git history) are:
+The primary contributors to this project are:
 
-- Tanish Jain <tanishjain020205@gmail.com>
-- Parth Narkar <parthnarkarofficial@gmail.com>
-- Archit Chitte <architchitte05@gmail.com>
-- Anshul Patil <reach2anshulp@gmail.com>
-- Harshvardhan Patil <2023.harshvardhan.patil@ves.ac.in>
-- Contributor 6 — (please provide name and email to replace this placeholder)
+- Tanish Sanghvi <tanishjain020205@gmail.com> <https://github.com/tanish-jain-225>
+- Parth Narkar <parthnarkarofficial@gmail.com> <https://github.com/parthnarkar>
+- Archit Chitte <architchitte05@gmail.com> <https://github.com/architchitte>
+- Anshul Patil <reach2anshulp@gmail.com> <https://github.com/Anshul-patil10>
+- Harshvardhan Patil <2023.harshvardhan.patil@ves.ac.in> <https://github.com/harshpatil110>
+- Gowri Nair <gowriknair2005@gmail.com> <https://github.com/Achu80>
 
-If you'd like different roles or ordering (e.g., alphabetical, by role), tell me and I will update this section.
-## Contributing
+## For Contributing
 
 1. Fork the repo and create a feature branch
 2. Run local dev (client + server)
