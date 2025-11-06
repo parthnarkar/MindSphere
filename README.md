@@ -13,8 +13,9 @@ MindSphere is a research/prototype digital mental-health support system focused 
 
 ## Demo & Slides
 
-- **YouTube Demo**: <a href="https://youtu.be/nXVGe-jcuzI" target="_blank">**Watch Here**</a>  
-- **Project PPT**: <a href="https://drive.google.com/file/d/1mNmLvwJcKor3MNabqPwNcCbr2fcVI5Jx/view?usp=sharing" target="_blank">**Click Here**</a>
+🎥 **Project Demo Video:** <a href="https://youtu.be/nXVGe-jcuzI" target="_blank">Watch Here</a> <br>
+📄 **Complete Project Overview:** <a href="https://drive.google.com/file/d/1mNmLvwJcKor3MNabqPwNcCbr2fcVI5Jx/view?usp=sharing" target="_blank">View the MindSphere PPT</a>
+
  
 ## Contents
 
