@@ -137,6 +137,32 @@ const AuthPage = ({ defaultRole } = {}) => {
     }
   }
 
+  // Prevent admin users from accessing /auth by checking sessionStorage on
+  // mount and on storage events (cross-tab). If an admin session is active
+  // redirect to /landing until they explicitly log out.
+  useEffect(() => {
+    try {
+      const checkAndRedirect = () => {
+        const current = sessionStorage.getItem("authRole");
+        if (current === "admin") navigate("/landing");
+      };
+
+      checkAndRedirect();
+
+      const onStorage = (ev) => {
+        if (ev && ev.key === "authRole" && ev.newValue === "admin") {
+          try {
+            navigate("/landing");
+          } catch (_) {}
+        }
+      };
+      window.addEventListener("storage", onStorage);
+      return () => window.removeEventListener("storage", onStorage);
+    } catch (e) {
+      // ignore
+    }
+  }, [navigate]);
+
   function showChangePopup() {
     // Open the change-credentials popup/modal
     setChangeError("");

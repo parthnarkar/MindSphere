@@ -414,9 +414,9 @@ export default function AdminDashboard() {
   // Small presentational subcomponents used only in this file
   const MetricsGrid = ({ metrics }) => (
     <section className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-      <Card label="Users (role=user)" value={metrics?.usersCount ?? 0} />
+      <Card label="Users" value={metrics?.usersCount ?? 0} />
       <Card
-        label="Counsellors (role=counsellor)"
+        label="Counsellors"
         value={metrics?.counsellorsCount ?? 0}
       />
     </section>
@@ -431,7 +431,7 @@ export default function AdminDashboard() {
 
   const List = ({ title, items, onView, reportLabel, onReport }) => (
     <div className="bg-white p-4 rounded shadow">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 gap-1">
         <h3 className="text-sm font-medium">
           {title} ({items.length})
         </h3>
@@ -571,7 +571,7 @@ export default function AdminDashboard() {
 
     return (
       <div className={`bg-white p-2 rounded shadow w-full ${className}`}>
-        <div className="flex items-center justify-between my-2">
+        <div className="flex items-center justify-between my-2 gap-1">
           <h3 className="text-sm font-medium">Appointments</h3>
           <div className="flex items-center gap-1">
             <select
@@ -603,7 +603,7 @@ export default function AdminDashboard() {
           <div className="text-md text-gray-700 w-full md:w-56 flex justify-center items-start flex-col gap-2 p-2">
             <div className="mb-2 font-medium">{counsellorName}</div>
 
-            {/* Stats with counts and percent */}
+            {/* Consistent legend: Accepted / Rejected / Other (always shown) */}
             {(() => {
               const t =
                 totalsForSelected.accepted +
@@ -611,36 +611,37 @@ export default function AdminDashboard() {
                 totalsForSelected.other;
               const pct = (n) => (t ? `${((n / t) * 100).toFixed(1)}%` : "0%");
               return (
-                <div className="space-y-1 mb-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-block w-3 h-3 rounded-sm"
-                        style={{ backgroundColor: "#10b981" }}
-                      />
-                      <span className="font-medium">Accepted </span>
+                <>
+                  {/* Detailed counts (kept for accessibility / layout parity) */}
+                  <div className="space-y-1 mb-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-3 h-3 rounded-sm"
+                          style={{ backgroundColor: "#10b981" }}
+                        />
+                        <span className="font-medium">Accepted </span>
+                      </div>
+                      <div className="text-xs text-gray-600 mx-1">
+                        {totalsForSelected.accepted} •{" "}
+                        {pct(totalsForSelected.accepted)}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-600 mx-1">
-                      {totalsForSelected.accepted} •{" "}
-                      {pct(totalsForSelected.accepted)}
-                    </div>
-                  </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className="inline-block w-3 h-3 rounded-sm"
-                        style={{ backgroundColor: "#ef4444" }}
-                      />
-                      <span className="font-medium">Rejected </span>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-block w-3 h-3 rounded-sm"
+                          style={{ backgroundColor: "#ef4444" }}
+                        />
+                        <span className="font-medium">Rejected </span>
+                      </div>
+                      <div className="text-xs text-gray-600 mx-1">
+                        {totalsForSelected.rejected} •{" "}
+                        {pct(totalsForSelected.rejected)}
+                      </div>
                     </div>
-                    <div className="text-xs text-gray-600 mx-1">
-                      {totalsForSelected.rejected} •{" "}
-                      {pct(totalsForSelected.rejected)}
-                    </div>
-                  </div>
 
-                  {totalsForSelected.other > 0 && (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span
@@ -654,8 +655,8 @@ export default function AdminDashboard() {
                         {pct(totalsForSelected.other)}
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                </>
               );
             })()}
           </div>
@@ -665,17 +666,28 @@ export default function AdminDashboard() {
   };
 
   const InstitutionData = ({ profiles = [], className = "" }) => {
+    const [expanded, setExpanded] = useState([]);
+    const toggleExpanded = (id) => {
+      setExpanded((prev) =>
+        prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      );
+    };
     // Group profiles by institution/school and render a selector + list.
     const bySchool = useMemo(() => {
       const m = {};
       (profiles || []).forEach((p) => {
-        const raw = p?.school ?? p?.institution ?? p?.org ?? p?.organisation ?? "Unknown";
+        const raw =
+          p?.school ?? p?.institution ?? p?.org ?? p?.organisation ?? "Unknown";
         const school = String(raw || "Unknown").trim() || "Unknown";
         if (!m[school]) m[school] = [];
         m[school].push(p);
       });
       // produce sorted array by count desc
-      const arr = Object.entries(m).map(([school, items]) => ({ school, count: items.length, items }));
+      const arr = Object.entries(m).map(([school, items]) => ({
+        school,
+        count: items.length,
+        items,
+      }));
       arr.sort((a, b) => b.count - a.count);
       return arr;
     }, [profiles]);
@@ -694,14 +706,15 @@ export default function AdminDashboard() {
 
     return (
       <div className={`bg-white p-4 rounded shadow w-full ${className}`}>
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 gap-1">
           <div>
             <h3 className="text-sm font-medium">Institutions</h3>
-            <div className="text-xs text-gray-500">Top institutions by user count</div>
+            <div className="text-xs text-gray-500">
+              Top institutions by user count
+            </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="text-sm text-gray-500">{total} users</div>
+          <div className="flex items-center gap-2">
             <select
               className="border rounded px-2 py-1 text-sm bg-white"
               value={selectedSchool}
@@ -719,43 +732,141 @@ export default function AdminDashboard() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 my-2 p-2">
           {/* Left: small bars for top institutions */}
-          <div className="max-h-72 overflow-y-auto p-2">
-            <div className="space-y-3">
+          <div>
+            <div className="text-sm text-gray-600 mb-2">
+                Showing {bySchool.length} institutions
+              </div>
+            <div className="space-y-3 p-2">
+              
               {bySchool.map(({ school, count }) => {
                 const pct = total ? (count / total) * 100 : 0;
                 return (
                   <div key={school} className="flex items-center gap-3">
-                    <div className="w-36 text-sm text-gray-700 truncate" title={school}>{school}</div>
-                    <div className="flex-1 bg-gray-100 h-4 rounded overflow-hidden">
-                      <div className="h-4 rounded bg-gradient-to-r from-blue-500 to-blue-700" style={{ width: `${Math.max(pct, 1)}%` }} />
+                    <div
+                      className="w-36 text-sm text-gray-700 truncate"
+                      title={school}
+                    >
+                      {school}
                     </div>
-                    <div className="w-20 text-right text-sm text-gray-600">{count} <span className="text-xs text-gray-400">({pct.toFixed(1)}%)</span></div>
+                    <div className="flex-1 bg-gray-100 h-4 rounded overflow-hidden">
+                      <div
+                        className="h-4 rounded bg-gradient-to-r from-blue-500 to-blue-700"
+                        style={{ width: `${Math.max(pct, 1)}%` }}
+                      />
+                    </div>
+                    <div className="w-20 text-right text-sm text-gray-600">
+                      {count}{" "}
+                      <span className="text-xs text-gray-400">
+                        ({pct.toFixed(1)}%)
+                      </span>
+                    </div>
                   </div>
                 );
               })}
 
-              <div className="text-xs text-gray-500 mt-2">Showing {bySchool.length} institutions</div>
+              
             </div>
           </div>
 
           {/* Right: list of users (all or filtered) */}
           <div>
             <div className="mb-2 text-sm text-gray-600">
-              {selectedSchool === "all" ? `Showing all users` : `Users in ${selectedSchool}`}
+              {selectedSchool === "all"
+                ? `Showing all users`
+                : `Users in ${selectedSchool}`}
             </div>
 
-            <div className="max-h-72 overflow-y-auto bg-gray-50 p-2 rounded">
+            <div className="bg-gray-50 p-2 rounded">
               <ul className="text-sm space-y-2">
                 {displayProfiles.length > 0 ? (
-                  displayProfiles.map((p, i) => (
-                    <li key={p.id || p.email || `${selectedSchool}-${i}`} className="flex items-center justify-between px-2 py-2 bg-white rounded">
-                      <div>
-                        <div className="font-medium text-sm">{p.name || p.email || "—"}</div>
-                        <div className="text-xs text-gray-500">{p.email || "—"}</div>
-                      </div>
-                      <div className="text-xs text-gray-600">{p.school || p.institution || "Unknown"}</div>
-                    </li>
-                  ))
+                  displayProfiles.map((p, i) => {
+                    const id = p.id || p.email || `${selectedSchool}-${i}`;
+                    const isOpen = expanded.includes(id);
+                    return (
+                      <li key={id} className="bg-white rounded shadow-sm">
+                        <div className="flex items-center justify-between p-2 gap-1">
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm truncate">
+                              {p.name || p.email || "—"}
+                            </div>
+                            <div className="text-xs text-gray-500 truncate">
+                              {p.email || "—"}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="text-xs text-gray-600 m-1 whitespace-nowrap">
+                              {p.school || p.institution || "Unknown"}
+                            </div>
+                            <button
+                              onClick={() => toggleExpanded(id)}
+                              className="text-xs text-[#FF8C42] cursor-pointer p-1 rounded focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-[#FF8C42]"
+                              aria-expanded={isOpen}
+                              aria-controls={`profile-${id}`}
+                            >
+                              {isOpen ? "Less" : "More"}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div
+                          id={`profile-${id}`}
+                          className={`px-2 transition-all duration-200 overflow-hidden ${
+                            isOpen ? "py-2" : "max-h-0"
+                          }`}
+                        >
+                          {isOpen && (
+                            <div className="bg-gray-50 p-2 rounded text-xs">
+                              {(() => {
+                                try {
+                                  const flat = flattenObject(p || {});
+                                  const keys = Object.keys(flat).sort();
+                                  if (keys.length === 0)
+                                    return (
+                                      <div className="text-gray-500">No fields available.</div>
+                                    );
+
+                                  // Desktop: table; Mobile: stacked key/value cards
+                                  return (
+                                    <>
+                                      <table className="hidden md:table w-full table-fixed text-left text-xs">
+                                        <tbody>
+                                          {keys.map((k) => (
+                                            <tr key={k} className="border-b odd:bg-white even:bg-gray-100">
+                                              <td className="w-1/3 p-2 text-gray-600 align-top break-words">
+                                                {prettifyKey(k)}
+                                              </td>
+                                              <td className="py-2 align-top break-words">
+                                                {formatValue(flat[k])}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+
+                                      <div className="md:hidden grid gap-2">
+                                        {keys.map((k) => (
+                                          <div key={k} className="bg-white p-2 rounded border">
+                                            <div className="text-xs text-gray-600 font-medium">{prettifyKey(k)}</div>
+                                            <div className="text-xs text-gray-800 mt-1 break-words">{formatValue(flat[k])}</div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </>
+                                  );
+                                } catch (e) {
+                                  return (
+                                    <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto">
+                                      {JSON.stringify(p, null, 2)}
+                                    </pre>
+                                  );
+                                }
+                              })()}
+                            </div>
+                          )}
+                        </div>
+                      </li>
+                    );
+                  })
                 ) : (
                   <li className="text-gray-500">No users found.</li>
                 )}
@@ -763,6 +874,7 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+        {/* Inline slider/drawer handles profile details per item (no modal) */}
       </div>
     );
   };
@@ -868,26 +980,26 @@ export default function AdminDashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-26">
-      <header className="mb-8 flex items-center justify-between">
+      <header className="my-2 flex items-center justify-between gap-2 py-2">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
+          <h1 className="text-xl font-semibold text-gray-900">
             Admin Dashboard
           </h1>
-          <p className="text-sm text-gray-600">
+          <p className="text-xs text-gray-600">
             Quick overview, filters and export
           </p>
         </div>
 
         {/* Real-time profile card: subscribes to Firestore and updates live */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <ProfileCard adminId={adminProfile?.id} />
         </div>
       </header>
 
       <MetricsGrid metrics={metrics} />
 
-      <section className="flex items-center justify-between my-2 py-2">
-        <div className="flex gap-3 items-center">
+      <section className="flex items-center justify-between my-2 py-2 gap-1">
+        <div className="flex gap-2 items-center">
           <input
             className="border rounded p-2 text-sm border-blue-400  outline-none"
             placeholder="Search name or email"
@@ -953,7 +1065,7 @@ export default function AdminDashboard() {
                                 key={k}
                                 className="border-b odd:bg-white even:bg-gray-100"
                               >
-                                <td className="w-1/3 py-2 pr-3 text-gray-600 align-top break-words">
+                                <td className="w-1/3 p-2 text-gray-600 align-top break-words">
                                   {prettifyKey(k)}
                                 </td>
                                 <td className="py-2 align-top break-words">
@@ -1012,7 +1124,7 @@ export default function AdminDashboard() {
                                 key={k}
                                 className="border-b odd:bg-white even:bg-gray-100"
                               >
-                                <td className="w-1/3 py-2 pr-3 text-gray-600 align-top break-words">
+                                <td className="w-1/3 p-2 text-gray-600 align-top break-words">
                                   {prettifyKey(k)}
                                 </td>
                                 <td className="py-2 align-top break-words">
@@ -1179,7 +1291,7 @@ function ProfileCard({ adminId }) {
 
   if (loading)
     return (
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1">
         <div className="w-12 h-12 rounded-full bg-gray-100 animate-pulse" />
         <div className="text-sm">
           <div className="w-28 h-3 bg-gray-100 rounded mb-1 animate-pulse" />
@@ -1195,7 +1307,7 @@ function ProfileCard({ adminId }) {
     return <div className="text-sm text-gray-600">No admin profile found</div>;
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex items-center gap-2">
       <div className="text-right">
         <div className="text-xs text-gray-500">Signed in as</div>
         <div className="font-medium">{profile.name || "Admin User"}</div>
