@@ -177,14 +177,14 @@ AI & model usage considerations
 
 ## Contributors
 
-The primary contributors to this project are:
+The primary contributors to this project are :- 
 
-- Tanish Sanghvi <tanishjain020205@gmail.com> <https://github.com/tanish-jain-225>
-- Parth Narkar <parthnarkarofficial@gmail.com> <https://github.com/parthnarkar>
-- Archit Chitte <architchitte05@gmail.com> <https://github.com/architchitte>
-- Anshul Patil <reach2anshulp@gmail.com> <https://github.com/Anshul-patil10>
-- Harshvardhan Patil <2023.harshvardhan.patil@ves.ac.in> <https://github.com/harshpatil110>
-- Gowri Nair <gowriknair2005@gmail.com> <https://github.com/Achu80>
+- Tanish Sanghvi - <tanishjain020205@gmail.com> - [@tanish-jain-225](https://github.com/tanish-jain-225)
+- Parth Narkar - <parthnarkarofficial@gmail.com> - [@parthnarkar](https://github.com/parthnarkar)
+- Archit Chitte - <architchitte05@gmail.com> - [@architchitte](https://github.com/architchitte)
+- Anshul Patil - <reach2anshulp@gmail.com> - [@Anshul-patil10](https://github.com/Anshul-patil10)
+- Harshvardhan Patil - <harshvardhan.work.11@gmail.com> - [@harshpatil110](https://github.com/harshpatil110)
+- Gowri Nair - <gowriknair2005@gmail.com> - [@Achu80](https://github.com/Achu80)
 
 ## For Contributing
 
