@@ -1,148 +1,229 @@
-# MindSphere
+# MindSphere — README
 
-MindSphere is a prototype digital mental-health support system built for student-facing workflows. This README has been re-written to match the actual repository contents (frontend + Flask backend). 
+This repository is a research/prototype digital mental-health support system designed for student-facing workflows. It includes:
 
-WARNING: this project is a research/prototype sample. It is NOT production-ready. Do not store or process real PII here. Use strong security controls and official clinical workflows before any real deployment.
+- `client/` — React + Vite frontend (UI: chat, screening, bookings, resources, forum, admin pages)
+- `server/` — Flask backend (REST API + optional integrations with MongoDB and Google Generative AI)
 
-Contents
-- Overview
-- Architecture
-- Quickstart (Windows / PowerShell)
-- Environment variables
-- Development (frontend & backend)
-- Key API endpoints
-- Email & testing tips
-- Deployment (Vercel) notes
+IMPORTANT: This project is a prototype. It is NOT production-ready. Do not use with real sensitive data or PII without adding proper security, privacy, and clinical governance.
+
+This ultimate README consolidates setup, development, testing, deployment, API reference, and operational guidance.
+
+Table of contents
+- Quick start (dev)
+- Architecture & design
+- Environment variables and secrets
+- Run & develop (frontend and backend)
+- API reference (selected endpoints)
+- Testing, CI, and health checks
+- Deployment notes (Vercel & general)
+- Security, privacy & compliance notes
+- Observability & scaling
 - Troubleshooting
 - Contributing
+- Next steps I can implement for you
 
-## Overview
+---
 
-This repository contains two main parts: 
-
-- `client/` — React + Vite frontend
-- `server/` — Flask REST API (single-file entry `server/app.py` with routes mounted on a blueprint)
-
-The frontend provides the UI (chatbot, screening modal, booking, profile and dashboards). The backend exposes REST endpoints for chat, PHQ-9 submissions, sessions, resources, posts, and admin metrics. The backend includes optional MongoDB support and optional integration with Google Generative AI (Gemini) when configured.
-
-## Architecture
-
-- Frontend: React + Vite, React Router, Firebase Auth + Firestore for user identity/role metadata.
-- Backend: Flask app implemented in `server/app.py`; helper utilities in `server/utils/` (db, helpers, model).
-- Persistence: optional MongoDB (configured via `MONGO_URI`). When Mongo isn't configured the server falls back to in-memory stores for many features (useful for local dev).
-- Email: SMTP via standard library `smtplib`. Emergency notification endpoint builds multipart plain+HTML emails using `server/utils/helpers.py` and sends via SMTP configured by environment variables.
-
-## Quickstart (Windows / PowerShell)
+## Quick start (local development)
 
 Prerequisites
 - Node 18+ and npm
 - Python 3.10+ and pip
-- Recommended: a local SMTP capture server for email testing (MailHog or smtp4dev)
+- Recommended locally: MailHog or smtp4dev (SMTP capture)
 
-Clone the repo and run frontend and backend locally:
-
-1) Frontend
+1) Start frontend (React + Vite)
 
 ```powershell
-cd D:\MindSphere\client
+cd client
+copy .env.example .env
+# edit client/.env if needed (VITE_API_BASE)
 npm install
 npm run dev
-# App available at http://localhost:5173
+# Open the Vite URL (usually http://localhost:5173)
 ```
 
-2) Backend (Flask)
+2) Start backend (Flask)
 
 ```powershell
-cd D:\MindSphere\server
+cd server
 python -m venv .venv
 . .venv\Scripts\Activate.ps1
+copy .env.example .env
+# edit server/.env to add MONGO_URI, GEMINI_API_KEY, SMTP configs etc.
 pip install -r requirements.txt
 python app.py
-# The server listens on the Flask default (5000) by default; visit http://localhost:5000/
+# Server will listen on port 5000 by default (http://localhost:5000)
 ```
 
-Note: `server/api/index.py` is present but it simply imports the Flask `app` (the primary code lives in `server/app.py`). Use `app.py` for local dev; the `api/index.py` shim can be useful when mapping serverless handlers in some hosting setups.
+Notes
+- `server/app.py` is the main Flask app; `server/api/index.py` is a shim used for serverless hosts.
+- When MongoDB is not configured the server falls back to in-memory stores for many features to simplify local development.
 
-## Environment variables
+## Architecture & design overview
 
-Copy `server/.env.example` (if present) to `server/.env` and fill values. Important server variables:
+- Frontend: React + Vite, Tailwind CSS, React Router. Uses Firebase for optional auth and Firestore for user metadata.
+- Backend: Flask application with routes mounted on a blueprint. Helpers live in `server/utils/` (DB helpers, prompt builders, model wrapper).
+- Generative AI integration: optional Google Generative AI (Gemini) via `server/utils/model.py` when `GEMINI_API_KEY` and `MODEL_NAME` are set.
+- Persistence: optional MongoDB. If absent the app uses in-memory stores (suitable for demos only).
+- Email: SMTP (smtplib) configured via env vars; emergency notification route constructs multipart plain+HTML messages.
 
-- `VITE_API_BASE` (client env) — the base URL for API requests (e.g. `http://localhost:5000`)
-- `MONGO_URI` — (optional) MongoDB connection string
-- `GEMINI_API_KEY` — (optional) Google Generative AI (Gemini) API key used by `server/utils/model.py`
-- `SMTP_HOST` — SMTP host for outgoing email alerts (use MailHog/smtp4dev for local testing)
-- `SMTP_PORT` — SMTP port (MailHog default: 1025)
-- `SMTP_USER` / `SMTP_PASS` — credentials (optional)
-- `EMAIL_FROM` — From address for outgoing alert emails
-- `EMAIL_TO` — Comma-separated list of recipients for emergency emails
-- `ADMIN_SUMMARY_TOKEN` — (optional) token to protect some admin summary endpoints
+Design choices
+- The backend separates prompt building (helpers) from model invocation (model.py) and database persistence (db.py) for clear responsibilities.
+- Safety: the code includes prompt instructions and caps in some endpoints (e.g., summary endpoints ask for MAX 500 words). These are prompt-level constraints rather than enforced truncation in many places.
 
-Security: never commit `.env` files or credentials to source control. Store secrets in your hosting platform's secure environment config.
+## Environment variables (summary)
 
-## Development notes
+Client (Vite) environment variables (prefix `VITE_`) are used by the frontend and are embedded at build time.
+- `VITE_API_BASE` — backend base URL for dev (e.g., http://localhost:5000)
+- `VITE_YT_API_KEY` — optional YouTube API key for resources page
 
-- The frontend uses Firebase Auth. A Firestore `users/{uid}` document is expected for role metadata. The app contains logic to create a minimal `users` doc on first sign-in (best-effort) to avoid redirect loops.
-- The backend safely falls back to in-memory stores when MongoDB isn't provided so you can run everything locally without external services.
-- The backend exposes many helpful endpoints for development and testing (see below).
+Server environment variables (edit `server/.env` or set in host):
+- `MONGO_URI` — MongoDB connection string (optional)
+- `MONGO_DB_NAME` — DB name (default: mindsphere)
+- `GEMINI_API_KEY` — API key for Gemini (optional)
+- `MODEL_NAME` — model identifier for generative calls (optional)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` — SMTP configuration for outgoing emails
+- `EMAIL_FROM`, `EMAIL_TO` — emergency email addresses
+- `ADMIN_SUMMARY_TOKEN` — optional admin token for protected endpoints
 
-## Key API endpoints (selected)
+Security note: Do not store private secrets in client-side `VITE_` variables for production. Use server-side environment variables or a secrets manager.
 
-These are available under the Flask app root (default `http://localhost:5000`):
+## Key endpoints (selected)
 
-- GET  /                     — health check (returns { status: 'ok' })
-- POST /api/chat             — chatbot message (body: { message: string, session_id?, history? })
-- GET/POST /api/chat/session — create/list chat sessions
-- GET/POST /api/chat/session/<id>/messages — read/append session messages
-- POST /api/notify/emergency_mail — build and send an emergency notification email (expects JSON describing detection context)
-- GET/POST /api/phq9         — submit or list PHQ-9 screening results
-- GET /api/phq9/<email>      — get latest PHQ-9 for an email
-- GET/POST /api/posts        — forum posts (in-memory or Mongo-backed)
-- GET/POST /api/resources    — resource CRUD
-- GET /api/admin             — basic admin metrics
+Base: http://localhost:5000
 
-Read the handler docstrings and `server/app.py` for full request/response details and optional query params.
+- GET  /
+	- Health check: returns { status: 'ok' }
 
-## Email & testing tips
+- POST /api/chat
+	- Body: { message: string, session_id?: string, history?: [] }
+	- Returns: { response: string, escalate: bool, intent: str, intentConfidence: float }
+	- Notes: Calls `modelutils.generate_coping_text(prompt)`. The server does not forcibly truncate model output — provider/model limits still apply.
 
-- For local email testing, run MailHog or smtp4dev and point `SMTP_HOST`/`SMTP_PORT` at it. Example MailHog default: host `localhost`, port `1025`.
-- The emergency mail route constructs a multipart EmailMessage with plain-text and HTML alternatives when available. If SMTP is not configured the route returns a helpful error.
+- GET/POST /api/chat/session
+	- Create or list chat sessions
 
-## Deployment notes (Vercel and general guidance)
+- GET/POST /api/chat/session/<session_id>/messages
+	- Read or append messages to a session
 
-- This repository is structured to allow deploying the frontend (client/) as a Vite site. The Flask backend can be deployed as serverless Python endpoints (Vercel supports Python serverless functions) or as a traditional server (container/VM).
-- If you deploy the Flask app as serverless functions, ensure environment variables (Mongo, SMTP, GEMINI_API_KEY) are set in the provider. Avoid expensive synchronous model initialization at cold start.
-- `requirements.txt` contains the necessary Python runtime packages (Flask, flask-cors, python-dotenv, google-generativeai, pymongo, dnspython, requests).
+- POST /api/notify/emergency_mail
+	- Builds and sends an emergency email (multipart) using SMTP settings
+
+- GET/POST /api/phq9
+	- Submit or list PHQ-9 screening forms
+
+- GET /api/phq9/<email>
+	- Get latest PHQ-9 for a user email
+
+- GET/POST /api/posts
+	- Forum post CRUD (in-memory or Mongo depending on configuration)
+
+- GET/POST /api/resources
+	- Resource CRUD used by Resources page
+
+- GET /api/admin
+	- Returns basic admin metrics (active users, screenings, bookings)
+
+For full request/response shapes and optional query params, read handler docstrings in `server/app.py` and the helper modules.
+
+## Development tips & workflows
+
+- Frontend:
+	- `npm run dev` for development, `npm run build` to produce production assets, `npm run preview` to preview build.
+	- Linting is available via `npm run lint` (ESLint configured). Tailwind config in `tailwind.config.js`.
+
+- Backend:
+	- `python app.py` runs the Flask dev server. For production testing use a WSGI server.
+	- `server/utils/model.py` exposes `init_model()` and `generate_coping_text()` which wrap the provider client. If `GEMINI_API_KEY` is not set the model client is disabled and callers must handle missing model behavior.
+
+- Common:
+	- Ensure `VITE_API_BASE` points to your running backend during local dev.
+	- Use MailHog/smtp4dev for capturing outgoing emails in dev.
+
+## Testing, CI & health checks
+
+- The repo includes `server/ultimate_server_test.py` — a lightweight integration-style tester that imports the WSGI app and exercises endpoints. Useful for CI smoke tests.
+
+Suggested CI (GitHub Actions):
+- Install server deps, run `python server/ultimate_server_test.py` as a smoke test
+- Install client deps, run `npm ci && npm run build` to validate frontend builds
+
+Example CI steps (pseudo):
+
+```yaml
+steps:
+	- uses: actions/checkout@v4
+	- name: Setup Python
+		uses: actions/setup-python@v4
+		with: { python-version: '3.11' }
+	- name: Server deps & tests
+		run: |
+			cd server
+			python -m venv .venv
+			. .venv/bin/activate
+			pip install -r requirements.txt
+			python .\ultimate_server_test.py
+		env:
+			MONGO_URI: ${{ secrets.MONGO_URI }}
+			GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+	- name: Client build
+		run: |
+			cd client
+			npm ci
+			npm run build
+```
+
+## Deployment notes
+
+Vercel (serverless)
+- `server/api/index.py` is intended to be the serverless entrypoint for Vercel. Vercel will import the Flask app.
+- Ensure environment variables are set in the Vercel project settings.
+- Serverless cold-starts mean model initialization and DB connection patterns should be tolerant to occasional re-initialization and timeouts.
+
+Traditional / containerized deployment
+- For production workloads or to avoid serverless connection limits, consider containerizing the Flask app and running in Cloud Run, ECS, or a VM with managed MongoDB and secrets store.
+
+AI & model usage considerations
+- The model provider enforces token limits (context + response). Your server code generally forwards the model output unchanged to clients (no hard truncation in `/api/chat`). For cost and reliability you may want to:
+	- Set a `max_tokens` arg when calling the provider client inside `utils/model.py` (if supported by provider SDK)
+	- Implement streaming to relay tokens to clients as they arrive
+	- Post-truncate output on the server using a configurable word/char cap (if you require a strict client limit)
+
+## Observability, scaling & costs
+
+- Add structured logs and an error tracking service (Sentry) before production.
+- Track request rates and model token usage to estimate costs for AI calls.
+- Consider caching common model outputs where possible and respecting rate limits.
+
+## Security, privacy & compliance
+
+- Authentication and authorization: many endpoints currently accept client-supplied emails; for production enforce auth and verify tokens server-side (e.g., Firebase ID tokens).
+- Minimize PII in logs. Consider hashing or using internal ids instead of raw emails in arrays or public objects.
+- Rate-limit endpoints that invoke models or send emails to avoid abuse.
 
 ## Troubleshooting
 
-- Health check returns 500 or import errors: activate the Python virtualenv and run `pip install -r requirements.txt`.
-- Chatbot returns `model not configured` or 503: set `GEMINI_API_KEY` and review `server/utils/model.py`.
-- Emails not delivered: verify SMTP settings and run a local SMTP catcher (MailHog). Check server logs for SMTP exceptions.
-- Frontend stuck on landing after sign-in: Firestore `users/{uid}` doc may not be present yet; the client performs a best-effort creation but latency can cause redirects. Ensure your Firebase setup mirrors the `client/.env.example` configuration.
+- Import errors when running server: ensure virtualenv is activated and dependencies are installed.
+- `model not configured` errors: set `GEMINI_API_KEY` and `MODEL_NAME` or handle missing model client in the calling code.
+- SMTP failures: point `SMTP_HOST`/`SMTP_PORT` to MailHog for local testing and check logs for exceptions.
 
-## Files of interest
+## Files and places to start reading code
 
-- `client/` — React app. Key files: `src/App.jsx`, `src/services/auth.js`, `src/components/Header.jsx`.
-- `server/app.py` — main Flask application and all REST routes.
-- `server/utils/` — `helpers.py`, `db.py`, `model.py` contain helper utilities (email builder, DB helpers, model init).
-- `server/requirements.txt` — Python runtime dependencies.
+- Frontend: `client/src/pages/*` and `client/src/components/*`
+- Backend entry: `server/app.py` (routes) and `server/api/index.py` (serverless shim)
+- Utility modules: `server/utils/db.py`, `server/utils/helpers.py`, `server/utils/model.py`
 
 ## Contributing
 
-PRs and issues are welcome. For small changes:
+1. Fork the repo and create a feature branch
+2. Run local dev (client + server)
+3. Add tests where useful and update docs
+4. Open a PR with a clear description and testing notes
 
-1. Fork & branch
-2. Run the app locally (frontend + backend)
-3. Include tests where meaningful and document env changes
+## Next steps I can implement for you
 
-If you'd like, I can add a small CI workflow that runs linting and a simple Flask import check on push. Tell me if you want that and whether you prefer GitHub Actions or another CI provider.
-
----
-
-If you'd like, I can now:
-
-- add a minimal `server/README.md` with exact env keys and simple run commands
-- create a GitHub Actions workflow that runs `python -c "import server.app"` and `npm ci && npm run build` on pushes
-- add a short `CONTRIBUTING.md`
-
-Tell me which follow-up you'd like and I'll implement it.
+- Add `.github/workflows/ci.yml` that runs server smoke tests and client build
+- Add a `server/scripts/validate-env.py` and add it to CI to fail fast when required env vars are missing
+- Implement streaming support for model responses (server + example client changes)
+- Add Jest/RTL tests for core frontend components and a basic Playwright e2e test

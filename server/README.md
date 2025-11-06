@@ -1,11 +1,18 @@
-
 # MindSphere — Server
 
-This document describes how to run and test the Flask server used by the MindSphere project. It is intended for local development, CI checks, and deployment (for example to Vercel serverless functions).
+This document describes how to run, test, and deploy the Flask-based backend used by MindSphere. It's focused on local development, CI checks, deployment (e.g., Vercel), and practical production considerations.
+
+Summary
+- Quick local dev steps (venv, install, env)
+- How to run tests and recommended health checks
+- Deployment notes (Vercel and general)
+- Security, observability, and CI advice
+
+---
 
 ## Quick start (local)
 
-1. Create a virtual environment and activate it (PowerShell):
+1. Create and activate a virtual environment (PowerShell):
 
 ```powershell
 cd server
@@ -19,77 +26,91 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-3. Copy the example env and fill values:
+3. Copy example env and fill in required values:
 
 ```powershell
 copy .env.example .env
-# Edit .env and fill MONGO_URI, GEMINI_API_KEY, ADMIN_SUMMARY_TOKEN, etc.
+# Edit .env and fill MONGO_URI, MONGO_DB_NAME, GEMINI_API_KEY, MODEL_NAME, ADMIN_SUMMARY_TOKEN, etc.
 ```
 
-4. Run the server (development):
+4. Run the server for development:
 
 ```powershell
 python api\index.py
-# or use your preferred WSGI server in production
+# Or use a WSGI server (gunicorn/uvicorn) for production testing
 ```
 
-The server exposes REST endpoints under `/api/*` (see top-level README for a list).
+The API root is mounted under `/api/*` (see `api/index.py` for route registration).
 
 ## Environment variables
 
-See `server/.env.example`. Important variables:
+The project reads configuration from environment variables (see `.env.example`). Important ones:
 
-- `MONGO_URI` — MongoDB connection string (e.g. `mongodb+srv://<user>:<pass>@cluster0...`).
-- `MONGO_DB_NAME` — database name (default: `mindsphere`).
-- `GEMINI_API_KEY` and `MODEL_NAME` — required if you use the Gemini AI features.
-- `ADMIN_SUMMARY_TOKEN` — a short admin token used by some admin routes (change for production).
+- `MONGO_URI` — MongoDB connection string (e.g., mongodb+srv://...)
+- `MONGO_DB_NAME` — DB name (default: `mindsphere`)
+- `GEMINI_API_KEY` and `MODEL_NAME` — required for Gemini AI features
+- `ADMIN_SUMMARY_TOKEN` — short admin token used by admin routes
 
 Notes:
-- If `MONGO_URI` uses `mongodb+srv://`, `dnspython` is required (included in `requirements.txt`).
-- Do not commit secrets. Use a secrets manager or the deployment provider's environment variable UI for production.
+- If `MONGO_URI` uses the `+srv` form, make sure `dnspython` is installed (included in `requirements.txt`).
+- Do not commit secrets; use a secrets manager or your host's environment settings for production.
 
-## Tests and health checks
+## Tests & health checks
 
-This repository includes `server/ultimate_server_test.py` — a production-style integration tester that:
+- The repo includes `server/ultimate_server_test.py`, a lightweight integration-style tester that imports the WSGI app and exercises key endpoints. It is useful for CI smoke tests.
 
-- Imports the WSGI app via `api/index.py` (mimics Vercel import behavior)
-- Exercises key endpoints: GET/POST/DELETE `/api/posts`, POST `/api/posts/like`
-- Optionally checks MongoDB connectivity and inspects `requirements.txt` imports
-
-Run it locally (ensure required env vars are set):
+Run it locally (make sure required env vars are set):
 
 ```powershell
 cd server
 python .\ultimate_server_test.py
 ```
 
-Exit codes:
-- `0` — success
-- non-zero — failure (useful for CI)
+Exit code `0` means success; any non-zero exit indicates failures for CI to pick up.
 
-## Health endpoint
+Health endpoint
+- Add a simple `/api/health` endpoint that returns 200 and optionally checks DB connectivity. `ultimate_server_test.py` will probe it if present but continues if absent.
 
-We recommend adding a lightweight `/api/health` endpoint that returns 200 and basic diagnostics (optional DB connectivity check). The `ultimate_server_test.py` will attempt to call `/api/health` but will continue if it's missing.
+## Running in production / deployment notes
 
-## Deployment (Vercel)
+Vercel
+- This repo contains `server/vercel.json` and `api/index.py` prepared for Vercel's serverless functions. Vercel will import `api/index.py` as the function entrypoint.
+- Ensure environment variables (GEMINI_API_KEY, MONGO_URI, MONGO_DB_NAME, etc.) are set in Vercel project settings.
+- For MongoDB connections from serverless functions, ensure your DB allows connections from Vercel (set IP/network access or use a managed private endpoint where possible).
 
-- The repository includes `server/vercel.json` and `api/index.py` suitable for Vercel's Python builder. Vercel will execute the file inside `api/` as the function entrypoint.
-- Ensure you set the same environment variables in Vercel (GEMINI_API_KEY, MONGO_URI, MONGO_DB_NAME, ADMIN_SUMMARY_TOKEN, etc.).
-- If your app depends on an external MongoDB cluster, ensure network egress from Vercel to your DB is allowed (Vercel serverless functions need outbound access to the DB).
+General production
+- Prefer a managed service (Cloud Run, ECS, or a VM) for long-running servers if you need persistent connections or larger models.
+- Pin Python runtime (e.g., add `runtime.txt` with `python-3.11.4`) if your host supports it.
 
-Tips:
-- Pin Python runtime (optional) by adding a `runtime.txt` (e.g., `python-3.11.4`) in the `server/` folder.
-- Prefer using Vercel environment variables rather than embedding secrets in `.env` for production.
+## Observability & reliability
 
-## Security & production notes
+- Add structured logging (JSON) and a request logger for production to track failures.
+- Add basic metrics (request count, latency) and an error tracker (Sentry or similar).
+- Consider request-size and rate-limiting middleware to protect the model and DB endpoints.
 
-- The current implementation trusts client-supplied `email` on some endpoints (delete/like). For production, enforce server-side authentication and verify ID tokens (for example, verify Firebase ID tokens on the server and use the verified `uid`/email for access control).
-- Avoid storing raw email addresses in `liked_by` — store user ids or hashed identifiers instead to reduce PII exposure.
-- Use HTTPS and middleware for rate-limiting, input validation and sanitization.
+## Security & production hardening
 
-## CI suggestion
+- Require authenticated requests for actions that modify state (likes, delete posts, admin endpoints). Verify tokens server-side (e.g., Firebase ID tokens) and use the verified uid/email.
+- Avoid storing raw email addresses in public-facing arrays; prefer user ids or hashed identifiers to reduce PII exposure.
+- Validate and sanitize incoming payloads. Use strict JSON schema validation for critical endpoints when possible.
+- Use HTTPS, enable CORS selectively, and add rate limiting.
 
-Add a simple GitHub Actions job that runs the `ultimate_server_test.py` after installing dependencies. Example (pseudo):
+## AI-specific considerations
+
+- Many endpoints call the generative model via `utils/model.py`:
+	- The model provider (Gemini) enforces context+response token limits. Your server currently does not impose a hard character/word limit for `/api/chat`; the provider will determine the final size.
+	- For predictable cost/behavior, either set `max_tokens` when calling the provider or post-process/truncate outputs before returning to clients.
+	- For large responses consider streaming tokens to the client (if provider/SDK supports it) to improve UX.
+
+## CI recommendations
+
+- Add a GitHub Actions workflow that:
+	1. Checks out code
+	2. Sets up Python
+	3. Installs dependencies
+	4. Runs `ultimate_server_test.py` as a smoke test
+
+Example job snippet (adapt to your CI):
 
 ```yaml
 jobs:
@@ -107,7 +128,7 @@ jobs:
 					python -m venv .venv
 					. .venv/bin/activate
 					pip install -r requirements.txt
-			- name: Run ultimate server tests
+			- name: Run server smoke tests
 				run: |
 					cd server
 					python .\ultimate_server_test.py
@@ -119,11 +140,13 @@ jobs:
 
 ## Troubleshooting
 
-- Import errors when Vercel runs functions: ensure `api/index.py` imports the app correctly and the repository root is discoverable (see `api/index.py` which adjusts `sys.path` if necessary).
-- Mongo connectivity failures: verify `MONGO_URI`, username/password, and that Atlas IP/network access allows the server IPs to connect.
-- Missing package errors: confirm `server/requirements.txt` is up to date and that Vercel installs dependencies successfully during build.
+- Import errors in serverless hosts: ensure `api/index.py` sets `sys.path` correctly or Vercel's project layout matches expectations.
+- Mongo connection failures: double-check `MONGO_URI`, credentials, and network egress rules (Atlas IP allowlist or VPC peering).
+- Model-related failures: if `GEMINI_API_KEY` or `MODEL_NAME` are not set, `utils/model.py` will disable model access; code expects callers to handle missing model client.
 
-## Contact / Maintainers
+## Where to make changes
 
-See top-level README for project credits. For changes to server behavior, edit `server/api/index.py` and the utilities in `server/utils/`.
-
+- Routes and API wiring: `api/index.py`
+- Model wrappers and extraction: `utils/model.py`
+- Prompt builders, intent detection, and helpers: `utils/helpers.py`
+- DB helpers and optional Mongo logic: `utils/db.py`

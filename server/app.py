@@ -28,6 +28,11 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=False)
 app.config.update({'JSON_SORT_KEYS': False})
 
+CREDENTIALS_COLLECTION_NAME = os.getenv('CREDENTIALS_COLLECTION_NAME')
+RESOURCES_RECORD_COLLECTION_NAME = os.getenv('RESOURCES_RECORD_COLLECTION_NAME')
+PEER_COLLECTION_NAME = os.getenv('PEER_COLLECTION_NAME')
+MASTER_COLLECTION_NAME = os.getenv('MASTER_COLLECTION_NAME')
+
 # Simple in-memory caches to avoid repeated model calls when quota is low.
 # Keys: chat summary keys (email/session/convo-hash) -> { summary: str, ts: float }
 CHAT_SUMMARY_CACHE = {}
@@ -988,14 +993,9 @@ def api_resource_searches():
             coll = getattr(dbutils, 'mongo_db', None)
             if coll is not None:
                 try:
-                    # Use a collection named resources_record
-                    rc = coll['resources_record']
+                    # Use a collection
+                    rc = coll[RESOURCES_RECORD_COLLECTION_NAME]
                     res = rc.insert_one(record)
-                    try:
-                        print(
-                            f"[resource-search] saved to Mongo resources_record user={record.get('user_email')} query={record.get('query')} id={res.inserted_id}")
-                    except Exception:
-                        pass
                     return jsonify({'ok': True}), 201
                 except Exception:
                     # fall back to in-memory on any persistence error
@@ -1026,7 +1026,7 @@ def api_resource_searches():
     try:
         coll = getattr(dbutils, 'mongo_db', None)
         if coll is not None:
-            rc = coll['resources_record']
+            rc = coll[RESOURCES_RECORD_COLLECTION_NAME]
             query = {}
             if email_lower:
                 query['user_email'] = email_lower
@@ -1065,11 +1065,12 @@ def api_resource_searches():
 
 @bp.route('/api/posts', methods=['GET', 'POST', 'DELETE', 'OPTIONS'])
 def api_posts():
-    """Return or create forum posts. Persists to Mongo `peer_database` when configured.
+    """Return or create forum posts. Persists to Mongo DB when configured.
 
     POST body expected JSON: { mail|email?: str, title?: str, post|content?: str, timestamp?: str }
     GET returns { posts: [ ... ] } newest-first irrespective of mail.
     """
+
     # Handle CORS preflight quickly
     if request.method == 'OPTIONS':
         return
@@ -1114,10 +1115,10 @@ def api_posts():
             if mongo_db is not None:
                 coll = None
                 try:
-                    coll = mongo_db.get_collection('peer_database')
+                    coll = mongo_db.get_collection(PEER_COLLECTION_NAME)
                 except Exception:
                     try:
-                        coll = mongo_db['peer_database']
+                        coll = mongo_db[PEER_COLLECTION_NAME]
                     except Exception:
                         coll = None
 
@@ -1334,7 +1335,7 @@ def api_posts():
         try:
             mongo_db = getattr(dbutils, 'mongo_db', None)
             if mongo_db is not None:
-                coll = mongo_db['peer_database']
+                coll = mongo_db[PEER_COLLECTION_NAME]
                 # Insert the document; then persist a string `id` equal to the inserted ObjectId
                 res = coll.insert_one(doc)
                 # Best-effort: write the string id back into the stored document so clients can delete by `id` field
@@ -1429,7 +1430,7 @@ def api_posts():
             q_email = None
 
         if mongo_db is not None:
-            coll = mongo_db['peer_database']
+            coll = mongo_db[PEER_COLLECTION_NAME]
             query = {}
             if q_email:
                 query['email'] = q_email
@@ -1506,7 +1507,7 @@ def api_posts_like():
     try:
         mongo_db = getattr(dbutils, 'mongo_db', None)
         if mongo_db is not None:
-            coll = mongo_db.get_collection('peer_database')
+            coll = mongo_db.get_collection(PEER_COLLECTION_NAME)
             try:
                 from bson.objectid import ObjectId
             except Exception:
@@ -1605,7 +1606,7 @@ def api_screenings():
 def api_clients():
     try:
         if getattr(dbutils, 'mongo_db', None) is not None:
-            coll = dbutils.mongo_db.get_collection('clients')
+            coll = dbutils.mongo_db.get_collection(MASTER_COLLECTION_NAME)
             docs = list(coll.find().sort([('createdAt', -1)]).limit(200))
             for d in docs:
                 d['id'] = str(d.get('_id'))
@@ -1616,10 +1617,10 @@ def api_clients():
                         d['createdAt'] = d['createdAt'].isoformat()
                     except Exception:
                         d['createdAt'] = str(d['createdAt'])
-            return jsonify({'clients': docs})
+            return jsonify({MASTER_COLLECTION_NAME: docs})
         sample = [{'id': 'sample-1', 'name': 'Student A',
                    'email': 'a@example.edu', 'submittedAt': '2025-01-01T10:00:00'}]
-        return jsonify({'clients': sample})
+        return jsonify({MASTER_COLLECTION_NAME: sample})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1638,7 +1639,7 @@ def api_clients_with_phq():
         phq_coll = dbutils.get_phq9_collection()
         out = []
         if getattr(dbutils, 'mongo_db', None) is not None:
-            coll = dbutils.mongo_db.get_collection('clients')
+            coll = dbutils.mongo_db.get_collection(MASTER_COLLECTION_NAME)
             docs = list(coll.find().sort([('createdAt', -1)]).limit(200))
             for d in docs:
                 cd = dict(d)
@@ -1678,7 +1679,7 @@ def api_clients_with_phq():
                         pass
                     cd['latest_phq'] = lp
                 out.append(cd)
-            return jsonify({'clients': out})
+            return jsonify({MASTER_COLLECTION_NAME: out})
 
         # No DB: try to synthesize clients from PHQ in-memory
         if hasattr(dbutils, 'phq9_in_memory') and dbutils.phq9_in_memory:
@@ -1701,10 +1702,10 @@ def api_clients_with_phq():
                 except Exception:
                     pass
                 out.append(rec)
-            return jsonify({'clients': out})
+            return jsonify({MASTER_COLLECTION_NAME: out})
 
         # Nothing to return
-        return jsonify({'clients': []})
+        return jsonify({MASTER_COLLECTION_NAME: []})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -1757,7 +1758,7 @@ def admin_login():
         if mongo_db is None:
             return jsonify({'error': 'mongo_not_configured'}), 503
         try:
-            coll = mongo_db.get_collection('admin_credentials')
+            coll = mongo_db.get_collection(CREDENTIALS_COLLECTION_NAME)
             email = request.args.get('email') or None
             if isinstance(email, str) and email:
                 doc = coll.find_one({'email': email})
@@ -1767,7 +1768,7 @@ def admin_login():
                     {'email': preferred_email}) or coll.find_one({})
 
             if not doc:
-                return jsonify({'error': 'admin_credentials_not_found'}), 404
+                return jsonify({'error': 'not_found'}), 404
 
             out = dict(doc)
             try:
@@ -1787,7 +1788,7 @@ def admin_login():
             traceback.print_exc()
             return jsonify({'error': 'internal_error', 'details': str(e)}), 500
 
-    # If PUT: update existing admin credentials in the admin_credentials collection
+    # If PUT: update existing admin credentials in the collection
     if request.method == 'PUT':
         try:
             data = request.get_json() or {}
@@ -1808,7 +1809,7 @@ def admin_login():
             return jsonify({'error': 'mongo_not_configured'}), 503
 
         try:
-            coll = mongo_db.get_collection('admin_credentials')
+            coll = mongo_db.get_collection(CREDENTIALS_COLLECTION_NAME)
             if isinstance(old_email, str) and old_email:
                 doc = coll.find_one({'email': old_email})
             else:
@@ -1816,7 +1817,7 @@ def admin_login():
                 doc = coll.find_one({'email': preferred_email}) or coll.find_one({})
 
             if not doc:
-                return jsonify({'error': 'admin_credentials_not_found'}), 404
+                return jsonify({'error': 'not_found'}), 404
 
             # Verify the provided current password matches stored password
             stored_password = doc.get('password') or ''
@@ -1862,7 +1863,7 @@ def admin_login():
         return jsonify({'error': 'mongo_not_configured'}), 503
 
     try:
-        coll = mongo_db.get_collection('admin_credentials')
+        coll = mongo_db.get_collection(CREDENTIALS_COLLECTION_NAME)
         email = (data.get('email') or None)
         if isinstance(email, str) and email:
             doc = coll.find_one({'email': email})
@@ -1872,7 +1873,7 @@ def admin_login():
                                 ) or coll.find_one({})
 
         if not doc:
-            return jsonify({'error': 'admin_credentials_not_found'}), 404
+            return jsonify({'error': 'not_found'}), 404
 
         out = dict(doc)
         try:
@@ -2383,5 +2384,5 @@ if __name__ == '__main__':
     dbutils.init_mongo()
     modelutils.init_model()
     # Default to 5000 if PORT not set; bind to all interfaces for local testing
-    port = int(os.getenv('PORT') or 5000)
+    port = int(os.getenv('PORT'))
     app.run(port=port, debug=True)

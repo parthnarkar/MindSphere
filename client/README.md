@@ -1,18 +1,20 @@
 # MindSphere — Client (React + Vite)
 
-This README expands the default Vite template with MindSphere-specific developer and deployment guidance. It focuses on environment configuration, local development, building, CI, and secure deployment.
+This README provides a focused, developer-friendly guide for the client (React + Vite) portion of MindSphere. It covers setup, environment variables, common commands, project layout, and deployment notes.
 
 Table of contents
 - Quick start
 - Environment variables
-- Local development
+- Development commands
 - Build & preview
-- Testing & linting
+- Linting & formatting
 - Deployment (Vercel)
 - Project structure
-- Security and privacy
+- Security & privacy
 - Troubleshooting
-- CI suggestions
+- Suggested next steps
+
+---
 
 ## Quick start
 
@@ -24,116 +26,104 @@ copy .env.example .env
 npm install
 ```
 
-2. Start dev server with hot reload:
+2. Start the dev server with hot reload:
 
 ```powershell
 npm run dev
 ```
 
-Visit http://localhost:5173 (or the URL printed by Vite).
+Open the URL printed by Vite (typically http://localhost:5173).
 
 ## Environment variables
 
-The client uses Vite env vars (only variables prefixed with `VITE_` are exposed to client code). Keep sensitive secrets on the server-side.
+The client uses Vite environment variables. Only variables prefixed with `VITE_` are embedded into the client bundle at build time. Do NOT store secrets you want to keep private here.
 
-Key variables (placeholders are in `client/.env.example`):
+Common variables (see `client/.env.example`):
 
-- `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_STORAGE_BUCKET`, `VITE_FIREBASE_MESSAGING_SENDER_ID`, `VITE_FIREBASE_APP_ID` — Firebase configuration for client auth and storage.
-- `VITE_YT_API_KEY`, `VITE_YT_PLAYLIST_ID` — Optional YouTube API access used by the resources page.
-- `VITE_API_BASE` — Local backend URL (default: `http://localhost:5000`).
-- `VITE_DEPLOYED_BACKEND_URL` — Production backend base URL used when the app is deployed.
-- `VITE_ADMIN_SUMMARY_TOKEN` — Short admin token used by admin UI flows. DO NOT store true secrets in client-side env for production.
+- VITE_API_BASE — Backend base for local development (e.g. http://localhost:5000)
+- VITE_DEPLOYED_BACKEND_URL — Production backend base URL
+- VITE_YT_API_KEY, VITE_YT_PLAYLIST_ID — (Optional) YouTube API keys used by the Resources page
+- VITE_FIREBASE_* — Firebase configuration (if using Firebase auth/storage)
+- VITE_ADMIN_SUMMARY_TOKEN — Short admin token used by admin UI flows (not a secret for production)
 
-Where to set them
-- For local development: `client/.env` (copy from `.env.example`).
-- For Vercel or other hosts: set environment variables in the project settings UI.
+Where to set them:
+- Local development: create `client/.env` (copy `.env.example`)
+- Vercel / CI: set environment variables in project settings
 
-## Local development
+If you modify env vars, restart the Vite dev server so the changes take effect.
 
-- Start the dev server:
+## Development commands
 
-```powershell
-npm run dev
-```
+- Start dev server: `npm run dev`
+- Build production bundle: `npm run build`
+- Preview production build: `npm run preview`
+- Lint: `npm run lint`
+- (Optional) Format: `npm run format` (if configured)
 
-- Linting (ESLint):
-
-```powershell
-npm run lint
-```
-
-- Format (if using Prettier, adjust accordingly):
-
-```powershell
-npm run format
-```
-
-If you change environment variables, restart the dev server so Vite picks them up.
+All commands are intended to be run from the `client/` directory.
 
 ## Build & preview
 
-- Build production bundle:
+Build the app for production:
 
 ```powershell
 npm run build
 ```
 
-- Preview production build locally:
+Preview the production build locally:
 
 ```powershell
 npm run preview
 ```
 
-When deploying, ensure `VITE_DEPLOYED_BACKEND_URL` points to your deployed backend.
+Before deploying make sure `VITE_DEPLOYED_BACKEND_URL` points to the correct backend.
 
-## Testing & linting
+## Linting & formatting
 
-- The client currently does not include a formal test suite. Consider adding Jest/React Testing Library for unit/component tests and Playwright for end-to-end tests.
-- Linting is configured via ESLint rules in `eslint.config.js`.
+- ESLint is configured via `eslint.config.js`. Run `npm run lint` to check code.
+- If you add Prettier or other formatters, add a `format` script and optionally a pre-commit hook.
 
 ## Deployment (Vercel)
 
-This project contains `client/vercel.json` and is Vercel-ready. Deployment checklist:
+This project includes `client/vercel.json` and is ready to deploy on Vercel. Checklist:
 
-1. In Vercel Project Settings, add the `VITE_` environment variables used by the client.
-2. Ensure your backend is deployed and reachable from the frontend (set `VITE_DEPLOYED_BACKEND_URL`).
-3. For client-only apps, Vercel will build the static site automatically. For serverless endpoints, ensure your server is deployed separately (the repo contains a `server/` folder configured for Vercel Functions).
+1. Add the required `VITE_` env variables in Vercel project settings.
+2. Ensure the backend API is deployed and `VITE_DEPLOYED_BACKEND_URL` points to it.
+3. Vercel will build the site during deployment; sensitive server-only keys must remain on the server side.
 
-Security note: Vite `VITE_` variables are embedded at build time. Never put secrets that must remain private in these variables for production builds.
+If you deploy the server as Vercel serverless functions, confirm CORS and routing between frontend and API.
 
 ## Project structure
 
-Top-level client folders you will work with:
+Key folders/files you'll work with:
 
-- `src/pages/` — Pages (Chatbot, Peer-to-Peer, Booking, Profile, etc.)
+- `src/pages/` — Page components (Chatbot, Peer-to-Peer, Resources, AdminDashboard, etc.)
 - `src/components/` — Reusable UI components
-- `src/services/` — Auth and backend service wrappers (Firebase, API calls)
-- `src/hooks/` — Custom React hooks
+- `src/services/` — Auth and backend wrappers (Firebase, API helpers)
+- `src/hooks/` — Reusable hooks
+- `public/` — Static assets
 
-Quick pointers:
-- `src/services/firebase.js` configures Firebase and is initialized from `VITE_FIREBASE_*` env vars.
-- `src/pages/Peer-to-Peer.jsx` is the forum page that calls the backend `/api/posts` endpoints.
+Notable files:
+- `src/pages/Resources.jsx` — Resource search page (YouTube, Wikipedia, OpenLibrary integrations)
+- `src/pages/Chatbot.jsx` — Chat UI; calls `/api/chat`
+- `src/services/firebase.js` — Firebase initialization when used
 
 ## Security & privacy
 
-- Do not store sensitive API keys in the client. For server-side-only secrets, put them in the `server/.env` or in your host's secret store and expose only necessary functionality via authenticated endpoints.
-- If you add analytics or third-party SDKs, update the privacy policy and obtain user consent where required.
+- Never store server-only secrets in `VITE_` env vars for production; use server environment variables or a secrets manager.
+- Limit client-side telemetry and disclose any analytics in your privacy policy.
+- For emergency or sensitive flows (e.g., sending emails), ensure credentials live on the server and are not exposed to client code.
 
 ## Troubleshooting
 
-- Dev server doesn't pick up env changes: stop and restart the dev server.
-- API calls failing with CORS: ensure backend allows requests from your dev origin (check server CORS settings).
-- Missing assets after build: confirm assets are referenced from `public/` or imported correctly in code.
+- Dev server not picking up env changes: stop and restart `npm run dev`.
+- CORS errors: verify backend `Access-Control-Allow-Origin` is set for dev host or use `VITE_API_BASE`/proxy configuration.
+- Missing or broken assets after build: ensure files are in `public/` or imported from `src/`.
+- YouTube/Wikipedia/OpenLibrary API failures: confirm `VITE_YT_API_KEY` and backend endpoints are configured and reachable.
 
-## CI / Automation suggestions
+## Suggested next steps (optional tasks I can help implement)
 
-- Add a GitHub Actions workflow to run `npm ci`, lint the code, and build the app on push to main.
-- Optionally, add an integration step that runs the server `ultimate_server_test.py` after the backend is deployed to verify compatibility.
-
-## Helpful tools & next steps I can implement
-
-- Add `client/scripts/validate-env.js` to check for required `VITE_` variables during `npm run dev`.
-- Add automated unit tests (Jest + RTL) for key components.
-- Add a simple Playwright e2e test for the Peer-to-Peer flow.
-
-If you'd like any of these implemented, tell me which and I'll add them.
+- Add `client/scripts/validate-env.js` to confirm required `VITE_` variables before dev/start.
+- Add Jest + React Testing Library for unit tests and a basic Playwright e2e test for the main flows.
+- Add CI GitHub Actions workflow: install, lint, build, and optionally run a small integration test against the server.
+- Add developer documentation pages for design tokens and Tailwind usage.
