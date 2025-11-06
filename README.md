@@ -9,20 +9,6 @@ IMPORTANT: This project is a prototype. It is NOT production-ready. Do not use w
 
 This ultimate README consolidates setup, development, testing, deployment, API reference, and operational guidance.
 
-Table of contents
-- Quick start (dev)
-- Architecture & design
-- Environment variables and secrets
-- Run & develop (frontend and backend)
-- API reference (selected endpoints)
-- Testing, CI, and health checks
-- Deployment notes (Vercel & general)
-- Security, privacy & compliance notes
-- Observability & scaling
-- Troubleshooting
-- Contributing
-- Next steps I can implement for you
-
 ---
 
 ## Quick start (local development)
@@ -214,16 +200,21 @@ AI & model usage considerations
 - Backend entry: `server/app.py` (routes) and `server/api/index.py` (serverless shim)
 - Utility modules: `server/utils/db.py`, `server/utils/helpers.py`, `server/utils/model.py`
 
+## Contributors
+
+Thank you to everyone who contributed to this project. The primary contributors (from git history) are:
+
+- Tanish Jain <tanishjain020205@gmail.com>
+- Parth Narkar <parthnarkarofficial@gmail.com>
+- Archit Chitte <architchitte05@gmail.com>
+- Anshul Patil <reach2anshulp@gmail.com>
+- Harshvardhan Patil <2023.harshvardhan.patil@ves.ac.in>
+- Contributor 6 — (please provide name and email to replace this placeholder)
+
+If you'd like different roles or ordering (e.g., alphabetical, by role), tell me and I will update this section.
 ## Contributing
 
 1. Fork the repo and create a feature branch
 2. Run local dev (client + server)
 3. Add tests where useful and update docs
 4. Open a PR with a clear description and testing notes
-
-## Next steps I can implement for you
-
-- Add `.github/workflows/ci.yml` that runs server smoke tests and client build
-- Add a `server/scripts/validate-env.py` and add it to CI to fail fast when required env vars are missing
-- Implement streaming support for model responses (server + example client changes)
-- Add Jest/RTL tests for core frontend components and a basic Playwright e2e test
