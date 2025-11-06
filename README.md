@@ -174,13 +174,9 @@ AI & model usage considerations
 
 ## Contributors
 
-| [![](https://github.com/parthnarkar.png?size=100)](https://github.com/parthnarkar) | [![](https://github.com/tanish-jain-225.png?size=100)](https://github.com/tanish-jain-225) | [![](https://github.com/architchitte.png?size=100)](https://github.com/architchitte) |
-| :--------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: |
-| [**Parth Narkar**](https://github.com/parthnarkar) | [**Tanish Sanghvi**](https://github.com/tanish-jain-225) | [**Archit Chitte**](https://github.com/architchitte) |
-
-| [![](https://github.com/Anshul-patil10.png?size=100)](https://github.com/Anshul-patil10) | [![](https://github.com/harshpatil110.png?size=100)](https://github.com/harshpatil110) | [![](https://github.com/Achu80.png?size=100)](https://github.com/Achu80) |
-| :--------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: | :----------------------------------------------------------------------------: |
-| [**Anshul Patil**](https://github.com/Anshul-patil10) | [**Harshvardhan Patil**](https://github.com/harshpatil110) | [**Gowri Nair**](https://github.com/Achu80) |
+| [![](https://github.com/parthnarkar.png?size=100)](https://github.com/parthnarkar) | [![](https://github.com/tanish-jain-225.png?size=100)](https://github.com/tanish-jain-225) | [![](https://github.com/architchitte.png?size=100)](https://github.com/architchitte) | [![](https://github.com/Anshul-patil10.png?size=100)](https://github.com/Anshul-patil10) | [![](https://github.com/harshpatil110.png?size=100)](https://github.com/harshpatil110) | [![](https://github.com/Achu80.png?size=100)](https://github.com/Achu80) |
+| :--------------------------------------------------------------------------------: | :----------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------------: | :--------------------------------------------------------------------------------: | :----------------------------------------------------------------------------: |
+| [**Parth Narkar**](https://github.com/parthnarkar) | [**Tanish Sanghvi**](https://github.com/tanish-jain-225) | [**Archit Chitte**](https://github.com/architchitte) | [**Anshul Patil**](https://github.com/Anshul-patil10) | [**Harshvardhan Patil**](https://github.com/harshpatil110) | [**Gowri Nair**](https://github.com/Achu80) |
 
 
 ## For Contributing
