@@ -37,7 +37,50 @@ export default function Booking() {
     const fetchCounsellors = async () => {
       try {
         const querySnapshot = await getDocs(collection(db, "counsellors"));
-        setCounsellors(querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        const counsellorsData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setCounsellors(counsellorsData);
+
+        // If no counsellors, add sample ones
+        if (counsellorsData.length === 0) {
+          const sampleCounsellors = [
+            {
+              name: "Dr. Emily Carter",
+              specialization: "Anxiety & Depression",
+              email: "emily.carter@mindsphere.com",
+              phone: "+1-555-0101",
+              image: "/councellor.png", // assuming logo is counsellor image
+            },
+            {
+              name: "Dr. Michael Johnson",
+              specialization: "Stress Management",
+              email: "michael.johnson@mindsphere.com",
+              phone: "+1-555-0102",
+              image: "/councellor.png",
+            },
+            {
+              name: "Dr. Sarah Lee",
+              specialization: "Relationship Counselling",
+              email: "sarah.lee@mindsphere.com",
+              phone: "+1-555-0103",
+              image: "/councellor.png",
+            },
+            {
+              name: "Dr. David Kim",
+              specialization: "Career Guidance",
+              email: "david.kim@mindsphere.com",
+              phone: "+1-555-0104",
+              image: "/councellor.png",
+            },
+          ];
+
+          for (const counsellor of sampleCounsellors) {
+            await addDoc(collection(db, "counsellors"), counsellor);
+          }
+
+          // Re-fetch after adding
+          const newSnapshot = await getDocs(collection(db, "counsellors"));
+          setCounsellors(newSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }
       } catch (error) {
         console.error("Error fetching counsellors:", error);
         toast.error("Failed to load counsellors. Please refresh the page.", {
