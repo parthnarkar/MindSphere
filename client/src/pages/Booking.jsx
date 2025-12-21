@@ -119,7 +119,7 @@ export default function Booking() {
   // Fetch counsellor details with error handling
   useEffect(() => {
     const fetchCounsellorDetails = async () => {
-      if (!selectedCounsellor) {
+      if (!selectedCounsellor || !selectedCounsellor.id) {
         setCounsellorDetails(null);
         return;
       }
@@ -232,6 +232,14 @@ export default function Booking() {
   const confirmBooking = async () => {
     if (!validateForm()) return;
 
+    if (!selectedCounsellor || !selectedCounsellor.id) {
+      toast.error("No counsellor selected. Please try again.", {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
+
     setBookingLoading(true);
     try {
       await addDoc(collection(db, "appointments"), {
@@ -307,7 +315,9 @@ export default function Booking() {
 
   // Handle view details
   const handleViewDetails = (counsellorId) => {
+    if (!counsellorId) return;
     const counsellor = counsellors.find(c => c.id === counsellorId);
+    if (!counsellor) return;
     setSelectedCounsellor(counsellor);
     setShowDetailsPopup(true);
   };
