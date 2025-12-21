@@ -74,6 +74,7 @@ const PeerToPeer = () => {
           // ignore timer errors
         }
         if (mounted) setLoading(false);
+        try { window.dispatchEvent(new CustomEvent('mindsphere:pageReady')); } catch(e) {}
       }
     };
     // expose fetchPosts to other handlers by attaching to component scope
