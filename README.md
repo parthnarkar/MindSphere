@@ -28,6 +28,43 @@ This README consolidates setup, development, testing, deployment, API reference,
 
 ---
 
+## User Roles and Modes
+
+MindSphere supports three primary user roles: **User**, **Counsellor**, and **Admin**. Each role has access to specific features and dashboards tailored to their responsibilities.
+
+### User Mode
+- **Target Audience**: Students seeking mental health support.
+- **Key Features**:
+  - **Chatbot**: Interactive AI-powered chat for coping strategies and support.
+  - **PHQ-9 Screening**: Self-assessment tool for depression symptoms.
+  - **Booking**: Schedule appointments with counsellors.
+  - **Resources**: Access to learning materials and help resources.
+  - **Peer-to-Peer Forum**: Community forum for sharing experiences and support.
+  - **Profile Management**: Update personal information and view history.
+- **Access**: Authenticated users with the "user" role.
+
+### Counsellor Mode
+- **Target Audience**: Mental health professionals providing support.
+- **Key Features**:
+  - **Dashboard**: View assigned appointments and client information.
+  - **PHQ-9 Data**: Review client screening results and track progress.
+  - **User Resources and History**: Access client resource searches and chat history.
+  - **Report Generation**: Generate detailed reports on client interactions.
+  - **Client Management**: Monitor and manage counsellor-client relationships.
+- **Access**: Authenticated users with the "counsellor" role.
+
+### Admin Mode
+- **Target Audience**: System administrators overseeing the platform.
+- **Key Features**:
+  - **Metrics Dashboard**: View system-wide statistics (e.g., active users, screenings, bookings).
+  - **User Management**: Monitor and manage all users, counsellors, and admins.
+  - **Appointment Oversight**: Review and manage all appointments.
+  - **Profile Management**: Access and update user profiles.
+  - **Real-time Data**: Subscribe to live updates from Firestore for counsellors, users, and appointments.
+- **Access**: Authenticated users with the "admin" role.
+
+Roles are determined by Firebase authentication and Firestore user documents. Protected routes ensure users can only access features appropriate to their role.
+
 ## Quick start (local development)
 
 Prerequisites
