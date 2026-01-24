@@ -5,7 +5,7 @@ function getFallbackRole() {
   try {
     if (typeof window === 'undefined') return null;
     return sessionStorage.getItem('authRole') || null;
-  } catch (e) {
+  } catch (_) {
     return null;
   }
 }

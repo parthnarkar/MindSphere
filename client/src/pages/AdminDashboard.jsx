@@ -15,7 +15,6 @@ export default function AdminDashboard() {
   const [counsellors, setCounsellors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [profiles, setProfiles] = useState([]);
-  const [users, setUsers] = useState([]);
   const [usersOnly, setUsersOnly] = useState([]);
   const [adminProfile, setAdminProfile] = useState(null);
 
@@ -34,9 +33,6 @@ export default function AdminDashboard() {
   const [selectedUser, setSelectedUser] = useState(null);
   const [selectedAppointmentCounsellor, setSelectedAppointmentCounsellor] =
     useState("all");
-  const [genLoading, setGenLoading] = useState(false);
-  const [genError, setGenError] = useState(null);
-  const [genStatus, setGenStatus] = useState("");
 
   // Helpers to open details and fetch related profile from `profiles/{uid}` collection
   const openUserDetails = async (user) => {
@@ -71,7 +67,9 @@ export default function AdminDashboard() {
     return () => {
       try {
         unsub();
-      } catch (e) {}
+      } catch (_) {
+        // Ignore cleanup errors
+      }
     };
   }, [selectedUser?.id]);
 
@@ -98,7 +96,9 @@ export default function AdminDashboard() {
     return () => {
       try {
         unsub();
-      } catch (e) {}
+      } catch (_) {
+        // Ignore cleanup errors
+      }
       // when modal closes, selectedCounsellor will be cleared by caller; do not merge profile data
     };
   }, [selectedCounsellor?.id]);
@@ -115,7 +115,6 @@ export default function AdminDashboard() {
         (snap) => {
           const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
           // Keep the full snapshot but also derive a users-only list (role === 'user')
-          setUsers(all);
           const usersList = all.filter(
             (u) => (u.role || "").toLowerCase() === "user"
           );
@@ -143,7 +142,9 @@ export default function AdminDashboard() {
           setLoading(false);
           try {
             window.dispatchEvent(new CustomEvent("mindsphere:pageReady"));
-          } catch (e) {}
+          } catch (_) {
+            // Ignore dispatch errors
+          }
         },
         (e) => {
           console.error("users snapshot error", e);
@@ -344,7 +345,7 @@ export default function AdminDashboard() {
     flat.forEach((f) => {
       const row = headers.map((h) => {
         // prefer nested key values, but if missing try top-level (already flattened covers both)
-        const val = f.hasOwnProperty(h) ? f[h] : "";
+        const val = Object.prototype.hasOwnProperty.call(f, h) ? f[h] : "";
         return escape(val);
       });
       rows.push(row.join(","));
@@ -361,7 +362,9 @@ export default function AdminDashboard() {
       if (v && typeof v.seconds === "number") {
         try {
           return new Date(v.seconds * 1000).toLocaleString();
-        } catch (e) {}
+        } catch (_) {
+          // Ignore date parsing errors
+        }
       }
       try {
         return JSON.stringify(v, null, 0);
@@ -866,7 +869,7 @@ export default function AdminDashboard() {
                                       </div>
                                     </>
                                   );
-                                } catch (e) {
+                                } catch (_) {
                                   return (
                                     <pre className="bg-gray-50 p-2 rounded text-xs overflow-auto">
                                       {JSON.stringify(p, null, 2)}
@@ -1098,7 +1101,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 );
-              } catch (e) {
+              } catch (_) {
                 return (
                   <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-[40vh] sm:max-h-[60vh]">
                     {JSON.stringify(selectedCounsellor, null, 2)}
@@ -1157,7 +1160,7 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 );
-              } catch (e) {
+              } catch (_) {
                 return (
                   <pre className="bg-gray-50 p-3 rounded text-xs overflow-auto max-h-[40vh] sm:max-h-[60vh]">
                     {JSON.stringify(selectedUser, null, 2)}
