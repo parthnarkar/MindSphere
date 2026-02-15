@@ -755,9 +755,8 @@ def api_summarize():
         # Log a brief summary of incoming payload for debugging (do not log secrets)
         try:
             keys = list(data.keys()) if isinstance(data, dict) else []
-            
         except Exception:
-            print("[api_summarize] Received payload (unreadable)")
+            return jsonify({"error": "Invalid request format"}), 400
         text = data.get('text')
         section = data.get('section', '')
 
