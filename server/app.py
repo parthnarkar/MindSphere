@@ -511,9 +511,9 @@ def api_chat_summary():
 
 @bp.route('/api/summaries', methods=['POST', 'OPTIONS'])
 def api_summaries():
-    """Generate Gemini-backed summaries for PHQ-9 entries, forum posts, resource finder history, and optional chat messages.
+    """Generate Gemini-backed summaries for PHQ-9 entries, forum posts, resource finder history and optional chat messages.
 
-    Accepts JSON body with optional keys: `phqEntries`, `posts`, `resources`, `chatMsgs`, and `userMeta`.
+    Accepts JSON body with optional keys: `phqEntries`, `posts`, `resources`, `chatMsgs` and `userMeta`.
     Returns: { summary: str }
     """
     if request.method == 'OPTIONS':
@@ -625,7 +625,7 @@ def api_chat_init():
     prompt = (
         helpers.COPING_SYSTEM_PROMPT + "\n" +
         "Provide a short, welcoming opening message (one or two sentences) that invites the user to share how they're feeling. "
-        "Keep the tone warm, approachable, and student-friendly. Avoid medical claims and do not reference internal system names."
+        "Keep the tone warm, approachable and student-friendly. Avoid medical claims and do not reference internal system names."
     )
     try:
         text = modelutils.generate_coping_text(prompt)
@@ -788,7 +788,7 @@ Chat History:
 
 5 observation points:""",
 
-            'peer': """You are a clinical data analyst summarizing forum participation. Create exactly 5 concise but detailed observations about these forum posts. Each point should be a complete sentence focused on topics discussed, engagement patterns, and types of interactions. Avoid diagnostic language or personal interpretations.
+            'peer': """You are a clinical data analyst summarizing forum participation. Create exactly 5 concise but detailed observations about these forum posts. Each point should be a complete sentence focused on topics discussed, engagement patterns and types of interactions. Avoid diagnostic language or personal interpretations.
 
 IMPORTANT RULES:
 - Start each point directly with the observation (no bullet points or numbers)
@@ -803,7 +803,7 @@ Forum Posts:
 
 5 observation points:""",
 
-            'resources': """You are a clinical data analyst summarizing resource usage patterns. Create exactly 5 concise but detailed observations about these resource interactions. Each point should be a complete sentence focused on types of resources accessed, topics of interest, and engagement patterns. Avoid diagnostic language or personal interpretations.
+            'resources': """You are a clinical data analyst summarizing resource usage patterns. Create exactly 5 concise but detailed observations about these resource interactions. Each point should be a complete sentence focused on types of resources accessed, topics of interest and engagement patterns. Avoid diagnostic language or personal interpretations.
 
 IMPORTANT RULES:
 - Start each point directly with the observation (no bullet points or numbers)
@@ -818,7 +818,7 @@ Resource History:
 
 5 observation points:""",
 
-            'phq9': """You are a clinical data analyst summarizing PHQ-9 screening data. Create exactly 5 concise but detailed observations about these screening results. Each point should be a complete sentence focused on score patterns, changes over time, and response consistencies. Avoid diagnostic language or personal interpretations.
+            'phq9': """You are a clinical data analyst summarizing PHQ-9 screening data. Create exactly 5 concise but detailed observations about these screening results. Each point should be a complete sentence focused on score patterns, changes over time and response consistencies. Avoid diagnostic language or personal interpretations.
 
 IMPORTANT RULES:
 - Start each point directly with the observation (no bullet points or numbers)
@@ -914,7 +914,7 @@ Generate 5 detailed bullet points:""")
             points = []
             for line in response.split('\n'):
                 line = line.strip()
-                # Skip empty lines, headers, and meta-text
+                # Skip empty lines, headers and meta-text
                 if not line or line.startswith('#') or line.lower().startswith(('here are', 'observation', 'generate', 'bullet')):
                     continue
 
@@ -2322,7 +2322,7 @@ def api_appointment_report(appt_id):
         model_prompt = (
             helpers.COPING_SYSTEM_PROMPT + "\n" +
             "You are a professional counselor assistant. Create a concise, one-page clinical-style report for a counsellor, using the information below. "
-            "Structure the report with a clear Title, a short Client Info section (name, email, contact), followed by sections: 'PHQ-9 Summary', 'Chatbot History', 'Forum Posts', and 'Resources Accessed'. "
+            "Structure the report with a clear Title, a short Client Info section (name, email, contact), followed by sections: 'PHQ-9 Summary', 'Chatbot History', 'Forum Posts' and 'Resources Accessed'. "
             "Use Markdown-style headings (e.g., # Title, ## Section) and bullet points for lists. Keep each section brief and focused; use bullet points for key observations. Begin with the user's basic details. Avoid any medical diagnosis; instead summarize severity and notable indicators. Limit output to approximately one page.\n\n"
             "IMPORTANT: Do NOT use inline bold markup like **bold text**. Use heading lines starting with #/## and simple '-' bullets. Avoid other Markdown decorations; plain text is preferred.\n\n"
             "DATA:\n" + "\n".join(prompt_sections) +

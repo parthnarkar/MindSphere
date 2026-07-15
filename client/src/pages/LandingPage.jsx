@@ -385,7 +385,7 @@ const LandingPage = () => {
             <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoChatbubblesOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Anonymous Chatbot</h3>
-              <p className="text-base text-[#90A4AE] mb-6">Get supportive, non-clinical help for stress, anxiety, and study issues powered by Gemini AI.</p>
+              <p className="text-base text-[#90A4AE] mb-6">Get supportive, non-clinical help for stress, anxiety and study issues powered by Gemini AI.</p>
               <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Chat now" className="w-full text-base"> {/* Redirect to login */}
                 Chat Now <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
@@ -425,7 +425,7 @@ const LandingPage = () => {
             <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoBookOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Resource Library</h3>
-              <p className="text-base text-[#90A4AE] mb-6">Access a curated collection of videos, articles, books, and local support services in our website.</p>
+              <p className="text-base text-[#90A4AE] mb-6">Access a curated collection of videos, articles, books and local support services in our website.</p>
               <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Explore resources" className="w-full text-base"> {/* Redirect to login */}
                 Explore Resources <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>
@@ -435,7 +435,7 @@ const LandingPage = () => {
             <UiCard className="p-6 md:p-8 flex flex-col items-center justify-center group"> {/* Added justify-center */}
               <div className="text-6xl text-[#FF8C42] mb-6 transition-transform group-hover:scale-110"><IoShieldCheckmarkOutline /></div>
               <h3 className="text-xl font-bold text-[#263238] mb-3">Admin & Counselor Dashboards</h3>
-              <p className="text-base text-[#90A4AE] mb-6">(Internal) Tools for administrators and counselors to manage users, bookings, and monitor trends.</p>
+              <p className="text-base text-[#90A4AE] mb-6">(Internal) Tools for administrators and counselors to manage users, bookings and monitor trends.</p>
               <PrimaryButton onClick={() => handleServiceButtonClick('user')} disabled={isAdminSession()} aria-label="Access dashboards" className="w-full text-base"> {/* Redirect to login */}
                 Access Dashboards <IoArrowForward className="inline-block ml-2" />
               </PrimaryButton>

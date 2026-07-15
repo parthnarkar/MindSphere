@@ -1,6 +1,6 @@
 # MindSphere — Client (React + Vite)
 
-This README provides a focused, developer-friendly guide for the client (React + Vite) portion of MindSphere. It covers setup, environment variables, common commands, project layout, and deployment notes.
+This README provides a focused, developer-friendly guide for the client (React + Vite) portion of MindSphere. It covers setup, environment variables, common commands, project layout and deployment notes.
 
 Table of contents
 - Quick start

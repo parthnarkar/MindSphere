@@ -40,7 +40,7 @@ GEMINI_MODEL = os.getenv('MODEL_NAME')
 # Single, constant prompt used for all model intent classification calls (per your request).
 # The model should return a strict JSON object and nothing else.
 UNIFIED_INTENT_PROMPT = (
-    "You are an expert, precise, and conservative intent classifier.\n"
+    "You are an expert, precise and conservative intent classifier.\n"
     "Task: Given a user message, RETURN ONLY a single valid JSON object (no commentary, no extra text) that exactly matches the schema below.\n"
     "Schema (required):\n"
     "{\n"
@@ -627,7 +627,7 @@ def generate_structured_report(user_meta: dict, phq_entries: list, chat_msgs: li
 
         # 5) Actionable recommendation
         try:
-            rec = 'Consider standard clinical follow-up: schedule a brief check-in, verify PHQ-9 answers, and assess for safety if any suicidal thoughts were reported.'
+            rec = 'Consider standard clinical follow-up: schedule a brief check-in, verify PHQ-9 answers and assess for safety if any suicidal thoughts were reported.'
             if isinstance(total, (int, float)) and total >= 20:
                 rec = 'High-priority follow-up recommended due to severe PHQ-9 score; perform immediate risk assessment and consider urgent referral as appropriate.'
             lines.append(f'5. Recommendation: {rec}')

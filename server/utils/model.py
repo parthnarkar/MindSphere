@@ -5,7 +5,7 @@ try:
 except Exception:
     genai = None
 
-# We'll store a lightweight client configuration: model_name if configured, and a reference to genai
+# We'll store a lightweight client configuration: model_name if configured and a reference to genai
 model_name = None
 client = None
 

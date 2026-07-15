@@ -1,12 +1,12 @@
 # MindSphere — Server
 
-This document describes how to run, test, and deploy the Flask-based backend used by MindSphere. It's focused on local development, CI checks, deployment (e.g., Vercel), and practical production considerations.
+This document describes how to run, test and deploy the Flask-based backend used by MindSphere. It's focused on local development, CI checks, deployment (e.g., Vercel) and practical production considerations.
 
 Summary
 - Quick local dev steps (venv, install, env)
 - How to run tests and recommended health checks
 - Deployment notes (Vercel and general)
-- Security, observability, and CI advice
+- Security, observability and CI advice
 
 ---
 
@@ -93,7 +93,7 @@ General production
 - Require authenticated requests for actions that modify state (likes, delete posts, admin endpoints). Verify tokens server-side (e.g., Firebase ID tokens) and use the verified uid/email.
 - Avoid storing raw email addresses in public-facing arrays; prefer user ids or hashed identifiers to reduce PII exposure.
 - Validate and sanitize incoming payloads. Use strict JSON schema validation for critical endpoints when possible.
-- Use HTTPS, enable CORS selectively, and add rate limiting.
+- Use HTTPS, enable CORS selectively and add rate limiting.
 
 ## AI-specific considerations
 
@@ -141,5 +141,5 @@ jobs:
 ## Troubleshooting
 
 - Import errors in serverless hosts: ensure `api/index.py` sets `sys.path` correctly or Vercel's project layout matches expectations.
-- Mongo connection failures: double-check `MONGO_URI`, credentials, and network egress rules (Atlas IP allowlist or VPC peering).
+- Mongo connection failures: double-check `MONGO_URI`, credentials and network egress rules (Atlas IP allowlist or VPC peering).
 - Model-related failures: if `GEMINI_API_KEY` or `MODEL_NAME` are not set, `utils/model.py` will disable model access; code expects callers to handle missing model client.

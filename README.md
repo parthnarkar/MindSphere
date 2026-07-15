@@ -22,15 +22,15 @@ MindSphere is a research/prototype digital mental-health support system focused 
 - `client/` — React + Vite frontend (UI: chat, screening, bookings, resources, forum, admin pages)
 - `server/` — Flask backend (REST API + optional integrations with MongoDB and Google Generative AI)
 
-IMPORTANT: This project is a prototype. It is NOT production-ready. Do not use with real sensitive data or PII without adding proper security, privacy, and clinical governance.
+IMPORTANT: This project is a prototype. It is NOT production-ready. Do not use with real sensitive data or PII without adding proper security, privacy and clinical governance.
 
-This README consolidates setup, development, testing, deployment, API reference, and operational guidance.
+This README consolidates setup, development, testing, deployment, API reference and operational guidance.
 
 ---
 
 ## User Roles and Modes
 
-MindSphere supports three primary user roles: **User**, **Counsellor**, and **Admin**. Each role has access to specific features and dashboards tailored to their responsibilities.
+MindSphere supports three primary user roles: **User**, **Counsellor** and **Admin**. Each role has access to specific features and dashboards tailored to their responsibilities.
 
 ### User Mode
 - **Target Audience**: Students seeking mental health support.
@@ -57,10 +57,10 @@ MindSphere supports three primary user roles: **User**, **Counsellor**, and **Ad
 - **Target Audience**: System administrators overseeing the platform.
 - **Key Features**:
   - **Metrics Dashboard**: View system-wide statistics (e.g., active users, screenings, bookings).
-  - **User Management**: Monitor and manage all users, counsellors, and admins.
+  - **User Management**: Monitor and manage all users, counsellors and admins.
   - **Appointment Oversight**: Review and manage all appointments.
   - **Profile Management**: Access and update user profiles.
-  - **Real-time Data**: Subscribe to live updates from Firestore for counsellors, users, and appointments.
+  - **Real-time Data**: Subscribe to live updates from Firestore for counsellors, users and appointments.
 - **Access**: Authenticated users with the "admin" role.
 
 Roles are determined by Firebase authentication and Firestore user documents. Protected routes ensure users can only access features appropriate to their role.

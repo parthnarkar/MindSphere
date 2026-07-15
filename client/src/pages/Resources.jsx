@@ -51,7 +51,7 @@ export default function Resources() {
   // Use Vite env vars for YouTube API, allow overriding via variables
   const YT_KEY = import.meta.env.VITE_YT_API_KEY || null;
 
-  // Accent colors (primary, darker hover, and light background)
+  // Accent colors (primary, darker hover and light background)
   const ACCENT = "#263238"; // primary accent (dark slate)
   const ACCENT_DARK = "#1b2b2d"; // slightly darker variant for subtle emphasis
   const ACCENT_LIGHT = "#faf3ef"; // very light background shade

@@ -805,7 +805,7 @@ const AuthPage = ({ defaultRole } = {}) => {
             MindSphere
           </h3>
           <p className="mt-4 text-base text-[#90A4AE] text-center px-8">
-            Confidential, simple, and supportive mental health tools for
+            Confidential, simple and supportive mental health tools for
             students.
           </p>
         </div>
