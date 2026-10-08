@@ -676,15 +676,23 @@ def phq9_post():
         return jsonify({'phq9_responses': out})
 
     # POST path (create new submission)
-    data = request.get_json() or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "request body must be a JSON object"}), 400
     user_email = data.get('user_email')
     answers = data.get('answers')
-    if not user_email or not isinstance(answers, list) or len(answers) != 9:
+    if (not isinstance(user_email, str) or not user_email.strip()
+            or not isinstance(answers, list) or len(answers) != 9):
         return jsonify({"error": "user_email and answers[9] are required"}), 400
+    # Preserve integer-string compatibility without coercing booleans or floats.
+    if any(type(x) is not int and not isinstance(x, str) for x in answers):
+        return jsonify({"error": "answers must be integers from 0 through 3"}), 400
     try:
         answers_int = [int(x) for x in answers]
-    except Exception:
-        return jsonify({"error": "answers must be integers"}), 400
+    except ValueError:
+        return jsonify({"error": "answers must be integers from 0 through 3"}), 400
+    if any(x < 0 or x > 3 for x in answers_int):
+        return jsonify({"error": "answers must be integers from 0 through 3"}), 400
     total_score = sum(answers_int)
     now = datetime.utcnow()
     doc = {"user_email": user_email.lower(), "timestamp": now,
