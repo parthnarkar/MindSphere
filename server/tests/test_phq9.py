@@ -99,6 +99,42 @@ class Phq9Tests(unittest.TestCase):
             with self.subTest(email=email):
                 self.assert_invalid(json={'user_email': email, 'answers': [0] * 9})
 
+    def test_email_is_trimmed_before_storage(self):
+        coll = Mock()
+        with patch.object(db, 'phq9_collection', coll):
+            response = self.submit([0] * 9, email='  Student@Example.test  ')
+        self.assertEqual(response.status_code, 201)
+        doc = coll.insert_one.call_args.args[0]
+        self.assertEqual(doc['user_email'], 'student@example.test')
+
+    def test_database_write_failure_returns_service_unavailable(self):
+        coll = Mock()
+        coll.insert_one.side_effect = RuntimeError('database unavailable')
+        with patch.object(db, 'phq9_collection', coll):
+            response = self.submit([0] * 9)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(set(response.get_json()), {'error'})
+        self.assertEqual(self.store, [])
+
+    def test_read_token_is_required_when_configured(self):
+        with patch.dict('os.environ', {'PHQ9_READ_TOKEN': 'secret-token'}):
+            collection_response = self.client.get('/api/phq9')
+            latest_response = self.client.get('/api/phq9/student@example.test')
+
+        self.assertEqual(collection_response.status_code, 401)
+        self.assertEqual(latest_response.status_code, 401)
+
+        headers = {'Authorization': 'Bearer secret-token'}
+        with patch.dict('os.environ', {'PHQ9_READ_TOKEN': 'secret-token'}):
+            collection_response = self.client.get('/api/phq9', headers=headers)
+            latest_response = self.client.get(
+                '/api/phq9/student@example.test',
+                headers=headers
+            )
+
+        self.assertEqual(collection_response.status_code, 200)
+        self.assertEqual(latest_response.status_code, 200)
+
     def test_non_object_json(self):
         for body in ([], [1], 'text', 123, True, False):
             with self.subTest(body=body):

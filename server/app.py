@@ -18,6 +18,7 @@ import traceback
 import time
 import hashlib
 import smtplib
+import hmac
 
 
 # Load env
@@ -111,6 +112,20 @@ def _handle_global_options():
 
 # Define a local blueprint to keep routes organized inside this master file
 bp = Blueprint('api', __name__)
+
+
+def _require_phq9_read_access():
+    read_token = os.getenv('PHQ9_READ_TOKEN')
+    if not read_token:
+        return None
+
+    auth_header = request.headers.get('Authorization', '')
+    scheme, separator, supplied_token = auth_header.partition(' ')
+    if (separator != ' '
+            or scheme.lower() != 'bearer'
+            or not hmac.compare_digest(supplied_token.strip(), read_token)):
+        return jsonify({'error': 'Unauthorized'}), 401
+    return None
 
 # In-memory fallbacks
 bookings = []
@@ -641,6 +656,9 @@ def phq9_post():
         return '', 204
 
     if request.method == 'GET':
+        access_error = _require_phq9_read_access()
+        if access_error:
+            return access_error
         # Return all PHQ-9 documents (db-backed if available, otherwise in-memory)
         coll = dbutils.get_phq9_collection()
         docs = []
@@ -695,10 +713,15 @@ def phq9_post():
         return jsonify({"error": "answers must be integers from 0 through 3"}), 400
     total_score = sum(answers_int)
     now = datetime.utcnow()
-    doc = {"user_email": user_email.lower(), "timestamp": now,
+    normalized_email = user_email.strip().lower()
+    doc = {"user_email": normalized_email, "timestamp": now,
            "answers": answers_int, "total_score": total_score}
-    if dbutils.insert_phq9(doc):
-        return jsonify({"ok": True}), 201
+    try:
+        if dbutils.insert_phq9(doc):
+            return jsonify({"ok": True}), 201
+    except Exception:
+        traceback.print_exc()
+        return jsonify({'error': 'failed to persist PHQ-9 submission'}), 503
     if not hasattr(dbutils, 'phq9_in_memory'):
         dbutils.phq9_in_memory = []
     dbutils.phq9_in_memory.insert(0, doc)
@@ -709,7 +732,11 @@ def phq9_post():
 def phq9_get_latest(email):
     if request.method == 'OPTIONS':
         return '', 204
-    doc = dbutils.find_latest_phq9(email)
+    access_error = _require_phq9_read_access()
+    if access_error:
+        return access_error
+    normalized_email = email.strip().lower()
+    doc = dbutils.find_latest_phq9(normalized_email)
     if doc:
         # copy and convert non-JSON types (ObjectId, datetime)
         safe = dict(doc)
@@ -726,7 +753,7 @@ def phq9_get_latest(email):
         return jsonify(safe)
     if hasattr(dbutils, 'phq9_in_memory'):
         for d in dbutils.phq9_in_memory:
-            if d.get('user_email') == email.lower():
+            if d.get('user_email') == normalized_email:
                 d2 = d.copy()
                 try:
                     if 'timestamp' in d2 and hasattr(d2['timestamp'], 'isoformat'):
