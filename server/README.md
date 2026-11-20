@@ -67,6 +67,12 @@ These tests disable dotenv loading and startup integrations, use Flask's test
 client, and exercise in-memory storage and a mocked MongoDB collection.
 They do not require MongoDB, Gemini, email services, or credentials.
 
+For production, set `PHQ9_READ_TOKEN` to protect PHQ-9 read endpoints. Clients
+must send `Authorization: Bearer <token>` when listing submissions or fetching
+a user's latest result. The dashboard may use `VITE_PHQ9_READ_TOKEN`, which
+must only be a read-only token and is not a substitute for server-side role
+authorization.
+
 ### PHQ-9 submission contract
 
 `POST /api/phq9` requires a JSON object with a nonblank string `user_email`
