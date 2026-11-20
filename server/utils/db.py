@@ -294,12 +294,18 @@ def delete_chat_session(session_id: str):
 
 def insert_phq9(doc):
     if phq9_collection is not None:
-        phq9_collection.insert_one(doc)
-        return True
+        try:
+            phq9_collection.insert_one(doc)
+            return True
+        except Exception as exc:
+            raise RuntimeError('failed to persist PHQ-9 submission') from exc
     return False
 
 def find_latest_phq9(email):
     if phq9_collection is not None:
-        doc = phq9_collection.find_one({"user_email": email.lower()}, sort=[("timestamp", -1)])
+        doc = phq9_collection.find_one(
+            {"user_email": email.strip().lower()},
+            sort=[("timestamp", -1)]
+        )
         return doc
     return None

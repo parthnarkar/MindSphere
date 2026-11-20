@@ -57,6 +57,36 @@ Notes:
 
 ## Tests & health checks
 
+Run the offline PHQ-9 regression tests from the repository root:
+
+```powershell
+python -m unittest discover -s server/tests -v
+```
+
+These tests disable dotenv loading and startup integrations, use Flask's test
+client, and exercise in-memory storage and a mocked MongoDB collection.
+They do not require MongoDB, Gemini, email services, or credentials.
+
+For production, set `PHQ9_READ_TOKEN` to protect PHQ-9 read endpoints. Clients
+must send `Authorization: Bearer <token>` when listing submissions or fetching
+a user's latest result. The dashboard may use `VITE_PHQ9_READ_TOKEN`, which
+must only be a read-only token and is not a substitute for server-side role
+authorization.
+
+### PHQ-9 submission contract
+
+`POST /api/phq9` requires a JSON object with a nonblank string `user_email`
+and an `answers` array containing exactly nine integers from 0 through 3.
+Integer strings accepted by the previous handler (for example, `"0"` and `"3"`)
+remain supported and are stored as integers. The frontend sends integers;
+string support is retained for compatibility with existing API clients.
+Booleans, floating-point numbers (including `1.0`), out-of-range answers,
+invalid fields, and malformed/non-object JSON return HTTP 400 with
+`{"error": "..."}` before any persistence call.
+Successful submissions retain HTTP 201, lowercase emails, and the existing
+response shapes: `{"ok": true}` for MongoDB, or the stored document with
+`user_email`, `timestamp`, `answers`, and `total_score` for in-memory storage.
+
 - The repo includes `server/ultimate_server_test.py`, a lightweight integration-style tester that imports the WSGI app and exercises key endpoints. It is useful for CI smoke tests.
 
 Run it locally (make sure required env vars are set):

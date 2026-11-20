@@ -2,9 +2,14 @@ import { API } from "./helper";
 
 const base = API
 
+function phq9ReadHeaders() {
+  const token = import.meta.env.VITE_PHQ9_READ_TOKEN
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
+
 export async function getLatestPhq9(email) {
   const url = `${base}/api/phq9/${encodeURIComponent(email)}`;
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: phq9ReadHeaders() });
   if (!res.ok) return null;
   const data = await res.json();
   return data?.result || null;

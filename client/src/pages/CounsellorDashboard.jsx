@@ -241,7 +241,12 @@ const CounsellorDashboard = () => {
       setPhqLoading(true);
       try {
         // Server now exposes GET /api/phq9 which returns { phq9_responses: [...] }
-        const res = await fetch(`${BACKEND}/api/phq9`);
+        const phq9ReadToken = import.meta.env.VITE_PHQ9_READ_TOKEN
+        const res = await fetch(`${BACKEND}/api/phq9`, {
+          headers: phq9ReadToken
+            ? { Authorization: `Bearer ${phq9ReadToken}` }
+            : {}
+        });
         if (!res.ok) {
           let errText = `HTTP ${res.status}`;
           try {
